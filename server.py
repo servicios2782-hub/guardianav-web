@@ -9,7 +9,7 @@ from pathlib import Path
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, make_response
 import mercadopago
 
 # ══════════════════════════════════════════════════════════
@@ -155,7 +155,12 @@ def enviar_email(nombre: str, email: str, codigo: str):
 
 @app.route("/")
 def index():
-    return send_from_directory(".", "index.html")
+    ref = request.args.get("ref", "").strip().upper()
+    resp = make_response(send_from_directory(".", "index.html"))
+    if ref:
+        resp.set_cookie("ref_afiliado", ref, max_age=7*24*3600)  # 7 días
+        logging.info(f"Visita con referido: {ref}")
+    return resp
 
 
 @app.route("/crear-pago", methods=["POST"])
@@ -167,6 +172,9 @@ def crear_pago():
 
     if not nombre or not email:
         return jsonify({"error": "Datos incompletos"}), 400
+
+    # Leer referido desde cookie
+    ref_afiliado = request.cookies.get("ref_afiliado", "")
 
     sdk  = mercadopago.SDK(MP_ACCESS_TOKEN)
     pref = {
@@ -187,7 +195,7 @@ def crear_pago():
         },
         "auto_return":    "approved",
         "notification_url": f"{BASE_URL}/webhook",
-        "external_reference": json.dumps({"nombre": nombre, "email": email}),
+        "external_reference": json.dumps({"nombre": nombre, "email": email, "ref": ref_afiliado}),
         "statement_descriptor": "GUARDIANAV",
     }
 
@@ -229,6 +237,7 @@ def webhook():
         ref    = json.loads(pago.get("external_reference", "{}"))
         nombre = ref.get("nombre", pago.get("payer", {}).get("first_name", "Cliente"))
         email  = ref.get("email",  pago.get("payer", {}).get("email", ""))
+        ref_afiliado = ref.get("ref", "")
 
         # Verificar que no se procese dos veces
         db = load_db()
@@ -240,14 +249,19 @@ def webhook():
         codigo = asignar_codigo()
 
         # Guardar venta
-        db.append({
+        entrada = {
             "pago_id":  str(pago_id),
             "nombre":   nombre,
             "email":    email,
             "codigo":   codigo,
             "fecha":    datetime.now().isoformat(),
             "monto":    pago.get("transaction_amount"),
-        })
+            "fuente":   "web",
+        }
+        if ref_afiliado:
+            entrada["ref"] = ref_afiliado
+            logging.info(f"Venta referida por: {ref_afiliado}")
+        db.append(entrada)
         save_db(db)
 
         # Enviar email
@@ -412,7 +426,8 @@ def ver_ventas():
     activados = sum(1 for u in usados if u.get("activado"))
     rows  = "".join(
         f"<tr><td>{v['fecha'][:16]}</td><td>{v['nombre']}</td><td>{v['email']}</td>"
-        f"<td style='color:#ffcc00'>{v['codigo']}</td><td style='color:#00ff88'>${v.get('monto',0)}</td></tr>"
+        f"<td style='color:#ffcc00'>{v['codigo']}</td><td style='color:#00ff88'>${v.get('monto',0)}</td>"
+        f"<td style='color:#00d4ff'>{v.get('ref','—')}</td><td style='color:#3a6080'>{v.get('fuente','web')}</td></tr>"
         for v in reversed(db)
     )
     return f"""
@@ -422,6 +437,7 @@ def ver_ventas():
     <body style="background:#060d14;color:#e0f0ff;font-family:monospace;padding:32px;">
       <h1 style="color:#00d4ff">GuardianAV — Panel de Ventas</h1>
       <p style="color:#3a6080">Ventas: {len(db)} | Recaudado: ${total:,.0f} | Activaciones: {activados}</p>
+      <p><a href="/afiliados" style="color:#00ff88">Ver panel de afiliados →</a></p>
       <table style="width:100%;border-collapse:collapse;margin-top:20px;">
         <tr style="color:#3a6080;border-bottom:1px solid #0a2d4a;">
           <th style="text-align:left;padding:8px">Fecha</th>
@@ -429,8 +445,57 @@ def ver_ventas():
           <th style="text-align:left;padding:8px">Email</th>
           <th style="text-align:left;padding:8px">Código</th>
           <th style="text-align:left;padding:8px">Monto</th>
+          <th style="text-align:left;padding:8px">Referido por</th>
+          <th style="text-align:left;padding:8px">Fuente</th>
         </tr>
-        {rows if rows else '<tr><td colspan="5" style="padding:20px;color:#3a6080">Sin ventas aún</td></tr>'}
+        {rows if rows else '<tr><td colspan="7" style="padding:20px;color:#3a6080">Sin ventas aún</td></tr>'}
+      </table>
+    </body>
+    </html>"""
+
+
+@app.route("/afiliados", methods=["GET"])
+def ver_afiliados():
+    """Panel de afiliados — cuántas ventas trajo cada influencer."""
+    db = load_db()
+    # Agrupar ventas por referido
+    stats = {}
+    for v in db:
+        ref = v.get("ref", "")
+        if not ref:
+            continue
+        if ref not in stats:
+            stats[ref] = {"ventas": 0, "monto": 0}
+        stats[ref]["ventas"] += 1
+        stats[ref]["monto"]  += v.get("monto", 0)
+
+    rows = "".join(
+        f"<tr>"
+        f"<td style='color:#00d4ff;padding:10px'>{ref}</td>"
+        f"<td style='padding:10px'>{d['ventas']}</td>"
+        f"<td style='color:#00ff88;padding:10px'>${d['monto']:,.0f}</td>"
+        f"<td style='color:#ffcc00;padding:10px'>${d['monto']*0.20:,.0f} (20%)</td>"
+        f"<td style='padding:10px;font-size:12px'>{BASE_URL}/?ref={ref}</td>"
+        f"</tr>"
+        for ref, d in sorted(stats.items(), key=lambda x: x[1]["ventas"], reverse=True)
+    )
+
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head><meta charset="utf-8"><title>Afiliados GuardianAV</title></head>
+    <body style="background:#060d14;color:#e0f0ff;font-family:monospace;padding:32px;">
+      <h1 style="color:#00d4ff">GuardianAV — Panel de Afiliados</h1>
+      <p style="color:#3a6080">Influencers activos: {len(stats)} | <a href="/ventas" style="color:#00d4ff">← Volver a ventas</a></p>
+      <table style="width:100%;border-collapse:collapse;margin-top:20px;">
+        <tr style="color:#3a6080;border-bottom:1px solid #0a2d4a;">
+          <th style="text-align:left;padding:8px">Influencer</th>
+          <th style="text-align:left;padding:8px">Ventas</th>
+          <th style="text-align:left;padding:8px">Recaudado</th>
+          <th style="text-align:left;padding:8px">Comisión estimada</th>
+          <th style="text-align:left;padding:8px">Su link</th>
+        </tr>
+        {rows if rows else '<tr><td colspan="5" style="padding:20px;color:#3a6080">Aún no hay ventas referidas</td></tr>'}
       </table>
     </body>
     </html>"""
