@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>GuardianAV — Protección Total para tu PC</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Courier+Prime:wght@400;700&family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --cyan: #00d4ff;
+    --green: #00ff88;
+    --red: #ff3366;
+    --yellow: #ffcc00;
+    --bg: #060d14;
+    --card: #0b1929;
+    --border: #0a2d4a;
+    --muted: #3a6080;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { background: var(--bg); color: #e0f0ff; font-family: 'Inter', sans-serif; overflow-x: hidden; }
+  .mono { font-family: 'Courier Prime', monospace; }
+
+  /* Grid futurista */
+  .grid-bg {
+    background-image:
+      linear-gradient(rgba(0,212,255,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,212,255,0.04) 1px, transparent 1px);
+    background-size: 60px 60px;
+  }
+
+  /* Glow effects */
+  .glow-cyan  { text-shadow: 0 0 20px rgba(0,212,255,0.8), 0 0 40px rgba(0,212,255,0.4); }
+  .glow-green { text-shadow: 0 0 20px rgba(0,255,136,0.8), 0 0 40px rgba(0,255,136,0.4); }
+  .border-cyan  { border: 1px solid rgba(0,212,255,0.4); }
+  .border-green { border: 1px solid rgba(0,255,136,0.4); }
+
+  .btn-cyan {
+    background: transparent;
+    border: 2px solid var(--cyan);
+    color: var(--cyan);
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+  .btn-cyan:hover { background: var(--cyan); color: var(--bg); box-shadow: 0 0 30px rgba(0,212,255,0.5); }
+
+  .btn-green {
+    background: var(--green);
+    color: var(--bg);
+    font-weight: 900;
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+  .btn-green:hover { box-shadow: 0 0 40px rgba(0,255,136,0.6); transform: translateY(-2px); }
+
+  /* Shield SVG animation */
+  @keyframes pulse-ring {
+    0%   { transform: scale(0.9); opacity: 0.8; }
+    100% { transform: scale(1.3); opacity: 0; }
+  }
+  .pulse-ring {
+    animation: pulse-ring 2s cubic-bezier(0.215,0.61,0.355,1) infinite;
+  }
+  .pulse-ring-2 { animation-delay: 0.5s; }
+  .pulse-ring-3 { animation-delay: 1s; }
+
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50%       { transform: translateY(-10px); }
+  }
+  .float { animation: float 4s ease-in-out infinite; }
+
+  @keyframes scan-line {
+    0%   { top: 0; opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+  }
+  .scan-line {
+    position: absolute; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--cyan), transparent);
+    animation: scan-line 3s linear infinite;
+  }
+
+  /* Card hover */
+  .feature-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    transition: all 0.25s;
+  }
+  .feature-card:hover {
+    border-color: rgba(0,212,255,0.5);
+    box-shadow: 0 0 20px rgba(0,212,255,0.1);
+    transform: translateY(-4px);
+  }
+
+  /* Precio tachado */
+  .tachado { text-decoration: line-through; color: var(--muted); }
+
+  /* Urgencia pulsante */
+  @keyframes urgencia {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.6; }
+  }
+  .urgencia { animation: urgencia 1.5s ease-in-out infinite; }
+
+  /* Corner marks */
+  .corner::before, .corner::after { content: ''; position: absolute; width: 20px; height: 20px; }
+  .corner-tl { border-top: 2px solid var(--cyan); border-left: 2px solid var(--cyan); top: 0; left: 0; }
+  .corner-tr { border-top: 2px solid var(--cyan); border-right: 2px solid var(--cyan); top: 0; right: 0; }
+  .corner-bl { border-bottom: 2px solid var(--cyan); border-left: 2px solid var(--cyan); bottom: 0; left: 0; }
+  .corner-br { border-bottom: 2px solid var(--cyan); border-right: 2px solid var(--cyan); bottom: 0; right: 0; }
+
+  /* Scrollbar */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* Modal */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,0.85); z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  .modal-overlay.active { display: flex; }
+</style>
+</head>
+<body class="grid-bg">
+
+<!-- Línea superior -->
+<div style="height:3px; background: linear-gradient(90deg, transparent, var(--cyan), var(--green), var(--cyan), transparent);"></div>
+
+<!-- NAVBAR -->
+<nav class="sticky top-0 z-50 border-b" style="background:rgba(6,13,20,0.95); border-color:var(--border); backdrop-filter:blur(10px);">
+  <div class="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <svg width="32" height="32" viewBox="0 0 32 32">
+        <polygon points="16,2 28,8 28,18 16,30 4,18 4,8" fill="#0b1929" stroke="#00d4ff" stroke-width="2"/>
+        <polygon points="16,7 23,11 23,17 16,24 9,17 9,11" fill="rgba(0,212,255,0.15)"/>
+        <path d="M11,16 L14,19 L21,12" fill="none" stroke="#00ff88" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <span class="mono font-bold text-xl" style="color:var(--cyan)">GUARDIAN<span style="color:#e0f0ff">AV</span></span>
+    </div>
+    <div class="hidden md:flex items-center gap-8 text-sm" style="color:var(--muted)">
+      <a href="#features" class="hover:text-white transition-colors cursor-pointer">Funciones</a>
+      <a href="#pricing" class="hover:text-white transition-colors cursor-pointer">Precio</a>
+      <a href="#faq" class="hover:text-white transition-colors cursor-pointer">FAQ</a>
+    </div>
+    <a href="#pricing" class="btn-cyan mono text-sm font-bold px-5 py-2 rounded">[ COMPRAR ]</a>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section class="relative min-h-screen flex items-center overflow-hidden">
+  <!-- Círculos de fondo -->
+  <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+    <div class="pulse-ring absolute rounded-full" style="width:500px;height:500px;border:1px solid rgba(0,212,255,0.15);"></div>
+    <div class="pulse-ring pulse-ring-2 absolute rounded-full" style="width:400px;height:400px;border:1px solid rgba(0,212,255,0.1);"></div>
+    <div class="pulse-ring pulse-ring-3 absolute rounded-full" style="width:300px;height:300px;border:1px solid rgba(0,212,255,0.08);"></div>
+  </div>
+
+  <div class="max-w-6xl mx-auto px-6 py-20 grid md:grid-cols-2 gap-16 items-center relative z-10">
+    <!-- Texto -->
+    <div>
+      <div class="mono text-sm mb-4 flex items-center gap-2" style="color:var(--cyan)">
+        <span class="w-2 h-2 rounded-full urgencia" style="background:var(--green); display:inline-block;"></span>
+        SISTEMA ACTIVO — PROTECCIÓN EN TIEMPO REAL
+      </div>
+
+      <h1 class="text-5xl md:text-7xl font-black mb-4 leading-tight">
+        <span class="glow-cyan" style="color:var(--cyan)">GUARDIAN</span><br>
+        <span style="color:#e0f0ff">AV</span>
+      </h1>
+
+      <p class="text-xl mb-2 font-bold" style="color:#e0f0ff">El antivirus que trabaja en silencio.</p>
+      <p class="mb-8 leading-relaxed" style="color:var(--muted)">
+        Protección completa en segundo plano, sin interrupciones, sin suscripción mensual.
+        Pago único y tuyo para siempre.
+      </p>
+
+      <div class="flex flex-wrap gap-4 mb-8">
+        <a href="#pricing" class="btn-green text-lg px-8 py-4 rounded-lg font-black">
+          OBTENER AHORA — $7.999
+        </a>
+        <a href="#features" class="btn-cyan px-8 py-4 rounded-lg font-bold mono">
+          [ VER FUNCIONES ]
+        </a>
+      </div>
+
+      <!-- Stats -->
+      <div class="flex flex-wrap gap-6">
+        <div>
+          <div class="mono font-bold text-2xl" style="color:var(--cyan)">52+</div>
+          <div class="text-xs" style="color:var(--muted)">Dominios de ads bloqueados</div>
+        </div>
+        <div>
+          <div class="mono font-bold text-2xl" style="color:var(--green)">24/7</div>
+          <div class="text-xs" style="color:var(--muted)">Monitor activo</div>
+        </div>
+        <div>
+          <div class="mono font-bold text-2xl" style="color:var(--yellow)">0%</div>
+          <div class="text-xs" style="color:var(--muted)">CPU en reposo</div>
+        </div>
+        <div>
+          <div class="mono font-bold text-2xl" style="color:var(--cyan)">1 PAGO</div>
+          <div class="text-xs" style="color:var(--muted)">Sin suscripción</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Escudo animado -->
+    <div class="flex items-center justify-center float">
+      <div class="relative">
+        <svg width="300" height="320" viewBox="0 0 300 320">
+          <!-- Anillos -->
+          <circle cx="150" cy="150" r="130" fill="none" stroke="rgba(0,212,255,0.08)" stroke-width="1"/>
+          <circle cx="150" cy="150" r="110" fill="none" stroke="rgba(0,212,255,0.12)" stroke-width="1"/>
+          <circle cx="150" cy="150" r="90"  fill="none" stroke="rgba(0,212,255,0.18)" stroke-width="1"/>
+          <!-- Escudo principal -->
+          <polygon points="150,20 260,70 260,160 150,290 40,160 40,70"
+            fill="#0b1929" stroke="#00d4ff" stroke-width="2.5"/>
+          <!-- Interior -->
+          <polygon points="150,45 235,85 235,155 150,265 65,155 65,85"
+            fill="rgba(0,212,255,0.06)" stroke="rgba(0,212,255,0.3)" stroke-width="1"/>
+          <!-- G grande -->
+          <text x="150" y="175" text-anchor="middle" font-family="Courier Prime" font-size="80" font-weight="bold" fill="#00d4ff" opacity="0.9">G</text>
+          <!-- Check abajo -->
+          <path d="M100,240 L130,270 L200,200" fill="none" stroke="#00ff88" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <!-- Scan line -->
+        <div class="scan-line" style="border-radius:4px;"></div>
+        <!-- Status badge -->
+        <div class="absolute bottom-0 left-1/2 -translate-x-1/2 mono text-xs px-4 py-1 rounded-full" style="background:rgba(0,255,136,0.15); border:1px solid rgba(0,255,136,0.4); color:var(--green);">
+          ● SISTEMA PROTEGIDO
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section id="features" class="py-24 relative">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-16">
+      <div class="mono text-sm mb-3" style="color:var(--cyan)">>> MODULOS DE PROTECCION</div>
+      <h2 class="text-4xl font-black mb-4">Lo que otros no hacen</h2>
+      <p style="color:var(--muted)">GuardianAV tiene funciones que los antivirus gratuitos no incluyen — o te cobran extra por ellas.</p>
+    </div>
+
+    <div class="grid md:grid-cols-3 gap-6">
+
+      <!-- Feature 1 -->
+      <div class="feature-card p-6 rounded-xl">
+        <div class="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style="background:rgba(0,212,255,0.1); border:1px solid rgba(0,212,255,0.3);">
+          <svg class="w-6 h-6" fill="none" stroke="#00d4ff" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+        </div>
+        <h3 class="font-bold text-lg mb-2" style="color:var(--cyan)">Anti-Publicidad Total</h3>
+        <p class="text-sm leading-relaxed" style="color:var(--muted)">Bloquea 52+ dominios de publicidad y tracking directamente en Windows. Funciona en todos los navegadores y apps sin instalar extensiones.</p>
+      </div>
+
+      <!-- Feature 2 -->
+      <div class="feature-card p-6 rounded-xl">
+        <div class="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style="background:rgba(0,255,136,0.1); border:1px solid rgba(0,255,136,0.3);">
+          <svg class="w-6 h-6" fill="none" stroke="#00ff88" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+        </div>
+        <h3 class="font-bold text-lg mb-2" style="color:var(--green)">Protección USB Automática</h3>
+        <p class="text-sm leading-relaxed" style="color:var(--muted)">Cuando conectás un pendrive, GuardianAV lo escanea automáticamente antes de que puedas abrirlo. Sin hacer nada, sin configurar nada.</p>
+      </div>
+
+      <!-- Feature 3 -->
+      <div class="feature-card p-6 rounded-xl">
+        <div class="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style="background:rgba(255,204,0,0.1); border:1px solid rgba(255,204,0,0.3);">
+          <svg class="w-6 h-6" fill="none" stroke="#ffcc00" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 5v2m0 4v2m0 4v2M5 5a2 2 0 00-2 2v3a2 2 0 110 4v3a2 2 0 002 2h14a2 2 0 002-2v-3a2 2 0 110-4V7a2 2 0 00-2-2H5z"/></svg>
+        </div>
+        <h3 class="font-bold text-lg mb-2" style="color:var(--yellow)">Modo Gaming</h3>
+        <p class="text-sm leading-relaxed" style="color:var(--muted)">Activá con un click y jugá sin interrupciones. GuardianAV reduce su consumo al mínimo y sigue vigilando en silencio. Se reactiva solo al terminar.</p>
+      </div>
+
+      <!-- Feature 4 -->
+      <div class="feature-card p-6 rounded-xl">
+        <div class="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style="background:rgba(0,128,255,0.1); border:1px solid rgba(0,128,255,0.3);">
+          <svg class="w-6 h-6" fill="none" stroke="#0080ff" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17v-2m3 2v-4m3 4v-6m2 10H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+        </div>
+        <h3 class="font-bold text-lg mb-2" style="color:#0080ff">Reporte PDF Oficial</h3>
+        <p class="text-sm leading-relaxed" style="color:var(--muted)">Después de cada escaneo generá un reporte completo con todos los detalles. Lo podés imprimir o guardar como constancia.</p>
+      </div>
+
+      <!-- Feature 5 -->
+      <div class="feature-card p-6 rounded-xl">
+        <div class="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style="background:rgba(0,212,255,0.1); border:1px solid rgba(0,212,255,0.3);">
+          <svg class="w-6 h-6" fill="none" stroke="#00d4ff" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+        </div>
+        <h3 class="font-bold text-lg mb-2" style="color:var(--cyan)">Ultra Liviano</h3>
+        <p class="text-sm leading-relaxed" style="color:var(--muted)">Menos de 50 MB de RAM. 0% CPU cuando no escanea. Tu PC va a la misma velocidad que antes. El antivirus que no se nota.</p>
+      </div>
+
+      <!-- Feature 6 -->
+      <div class="feature-card p-6 rounded-xl">
+        <div class="w-12 h-12 rounded-lg flex items-center justify-center mb-4" style="background:rgba(255,51,102,0.1); border:1px solid rgba(255,51,102,0.3);">
+          <svg class="w-6 h-6" fill="none" stroke="#ff3366" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+        </div>
+        <h3 class="font-bold text-lg mb-2" style="color:var(--red)">Monitor en Tiempo Real</h3>
+        <p class="text-sm leading-relaxed" style="color:var(--muted)">Vigila Descargas, Escritorio y Temp las 24 horas. Cualquier archivo sospechoso que aparezca es detectado y puesto en cuarentena al instante.</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- COMPARACION -->
+<section class="py-16" style="background:rgba(11,25,41,0.5);">
+  <div class="max-w-4xl mx-auto px-6">
+    <div class="text-center mb-12">
+      <h2 class="text-3xl font-black mb-2">GuardianAV vs el resto</h2>
+      <p style="color:var(--muted)">Lo que tenés que saber antes de seguir pagando suscripciones</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr style="border-bottom:2px solid var(--border);">
+            <th class="text-left py-3 px-4" style="color:var(--muted)">Función</th>
+            <th class="py-3 px-4 text-center" style="color:var(--cyan)">GuardianAV</th>
+            <th class="py-3 px-4 text-center" style="color:var(--muted)">Avast Gratis</th>
+            <th class="py-3 px-4 text-center" style="color:var(--muted)">Windows Defender</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td class="py-3 px-4">Anti-publicidad integrado</td>
+            <td class="py-3 px-4 text-center" style="color:var(--green)">✔</td>
+            <td class="py-3 px-4 text-center" style="color:var(--red)">✘</td>
+            <td class="py-3 px-4 text-center" style="color:var(--red)">✘</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td class="py-3 px-4">Protección USB automática</td>
+            <td class="py-3 px-4 text-center" style="color:var(--green)">✔</td>
+            <td class="py-3 px-4 text-center" style="color:var(--yellow)">Solo pago</td>
+            <td class="py-3 px-4 text-center" style="color:var(--yellow)">Básico</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td class="py-3 px-4">Modo Gaming sin interrupciones</td>
+            <td class="py-3 px-4 text-center" style="color:var(--green)">✔</td>
+            <td class="py-3 px-4 text-center" style="color:var(--red)">✘</td>
+            <td class="py-3 px-4 text-center" style="color:var(--red)">✘</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td class="py-3 px-4">Reporte PDF de cada escaneo</td>
+            <td class="py-3 px-4 text-center" style="color:var(--green)">✔</td>
+            <td class="py-3 px-4 text-center" style="color:var(--red)">✘</td>
+            <td class="py-3 px-4 text-center" style="color:var(--red)">✘</td>
+          </tr>
+          <tr style="border-bottom:1px solid var(--border);">
+            <td class="py-3 px-4">Precio</td>
+            <td class="py-3 px-4 text-center font-bold" style="color:var(--green)">$7.999 único</td>
+            <td class="py-3 px-4 text-center" style="color:var(--red)">Suscripción anual</td>
+            <td class="py-3 px-4 text-center" style="color:var(--green)">Gratis</td>
+          </tr>
+          <tr>
+            <td class="py-3 px-4">Vende tus datos</td>
+            <td class="py-3 px-4 text-center" style="color:var(--green)">✘ Nunca</td>
+            <td class="py-3 px-4 text-center" style="color:var(--red)">✔ Sí</td>
+            <td class="py-3 px-4 text-center" style="color:var(--yellow)">Telemetría</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
+
+<!-- BANNER PROMO -->
+<div style="background:linear-gradient(90deg,#0b1929,rgba(0,212,255,0.08),#0b1929); border-top:1px solid rgba(0,212,255,0.2); border-bottom:1px solid rgba(0,212,255,0.2); padding:14px 0; text-align:center;">
+  <div class="mono text-sm" style="color:var(--cyan)">
+    ⚡ OFERTA DE LANZAMIENTO — PRECIO ESPECIAL POR TIEMPO LIMITADO &nbsp;|&nbsp;
+    <span style="color:var(--green)">AHORRÁS $6.001</span> &nbsp;|&nbsp;
+    <span style="color:var(--yellow)" id="countdown-banner">Cargando...</span>
+  </div>
+</div>
+
+<!-- PRICING -->
+<section id="pricing" class="py-24">
+  <div class="max-w-2xl mx-auto px-6 text-center">
+    <div class="mono text-sm mb-3" style="color:var(--cyan)">>> PRECIO DE LANZAMIENTO</div>
+    <h2 class="text-4xl font-black mb-4">Una sola vez. Para siempre.</h2>
+    <p class="mb-12" style="color:var(--muted)">Sin renovaciones. Sin trucos. Pagás una vez y es tuyo.</p>
+
+    <!-- Card precio -->
+    <div class="relative p-8 rounded-2xl text-left" style="background:var(--card); border:2px solid var(--cyan); box-shadow: 0 0 40px rgba(0,212,255,0.15);">
+      <!-- Corners -->
+      <div class="absolute top-0 left-0 w-5 h-5 corner-tl"></div>
+      <div class="absolute top-0 right-0 w-5 h-5 corner-tr"></div>
+      <div class="absolute bottom-0 left-0 w-5 h-5 corner-bl"></div>
+      <div class="absolute bottom-0 right-0 w-5 h-5 corner-br"></div>
+
+      <div class="flex items-start justify-between mb-6 flex-wrap gap-4">
+        <div>
+          <div class="mono text-sm mb-1" style="color:var(--muted)">GUARDIANAV — LICENCIA COMPLETA</div>
+          <div class="mono font-bold text-6xl" style="color:var(--yellow)">$7.999</div>
+          <div class="tachado text-lg mt-1">$14.000</div>
+        </div>
+        <div style="align-self:flex-start;">
+          <div class="mono text-xs px-3 py-1 rounded urgencia mb-2" style="background:rgba(255,51,102,0.15); border:1px solid rgba(255,51,102,0.4); color:var(--red);">
+            ⚡ PRECIO DE LANZAMIENTO
+          </div>
+          <div class="mono text-xs px-3 py-1 rounded" style="background:rgba(255,204,0,0.1); border:1px solid rgba(255,204,0,0.4); color:var(--yellow); text-align:center;">
+            ⏳ <span id="countdown">Cargando...</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Incluye -->
+      <div class="space-y-3 mb-8">
+        <div class="flex items-center gap-3">
+          <div class="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style="background:rgba(0,255,136,0.2);">
+            <svg class="w-3 h-3" fill="var(--green)" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+          </div>
+          <span class="text-sm">Licencia de por vida — 1 PC</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style="background:rgba(0,255,136,0.2);">
+            <svg class="w-3 h-3" fill="var(--green)" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+          </div>
+          <span class="text-sm">Código de activación enviado por email al instante</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style="background:rgba(0,255,136,0.2);">
+            <svg class="w-3 h-3" fill="var(--green)" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+          </div>
+          <span class="text-sm">Todas las funciones incluidas — Anti-ads, USB, Gaming, PDF</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style="background:rgba(0,255,136,0.2);">
+            <svg class="w-3 h-3" fill="var(--green)" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+          </div>
+          <span class="text-sm">Soporte por WhatsApp</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0" style="background:rgba(0,255,136,0.2);">
+            <svg class="w-3 h-3" fill="var(--green)" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clip-rule="evenodd"/></svg>
+          </div>
+          <span class="text-sm">Actualizaciones incluidas</span>
+        </div>
+      </div>
+
+      <!-- Botón comprar -->
+      <button onclick="document.getElementById('modal-compra').classList.add('active')"
+        class="btn-green w-full py-5 rounded-xl text-xl font-black tracking-wide">
+        COMPRAR CON MERCADOPAGO
+      </button>
+
+      <p class="text-center text-xs mt-4" style="color:var(--muted)">
+        Pago seguro con MercadoPago · Tarjetas · Transferencia · Efectivo
+      </p>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section id="faq" class="py-20" style="background:rgba(11,25,41,0.5);">
+  <div class="max-w-3xl mx-auto px-6">
+    <div class="text-center mb-12">
+      <div class="mono text-sm mb-3" style="color:var(--cyan)">>> PREGUNTAS FRECUENTES</div>
+      <h2 class="text-3xl font-black">Lo que todos preguntan</h2>
+    </div>
+    <div class="space-y-4" id="faq-list">
+      <div class="feature-card p-6 rounded-xl cursor-pointer" onclick="toggleFaq(this)">
+        <div class="flex justify-between items-center">
+          <h3 class="font-bold">¿Cómo recibo el antivirus después de pagar?</h3>
+          <svg class="w-5 h-5 faq-icon transition-transform" fill="none" stroke="#00d4ff" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </div>
+        <p class="faq-answer hidden mt-3 text-sm leading-relaxed" style="color:var(--muted)">
+          Al confirmar el pago, recibís automáticamente un email con el archivo GuardianAV.exe y tu código de activación único. En menos de 5 minutos ya estás protegido.
+        </p>
+      </div>
+      <div class="feature-card p-6 rounded-xl cursor-pointer" onclick="toggleFaq(this)">
+        <div class="flex justify-between items-center">
+          <h3 class="font-bold">¿Funciona en Windows 10 y 11?</h3>
+          <svg class="w-5 h-5 faq-icon transition-transform" fill="none" stroke="#00d4ff" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </div>
+        <p class="faq-answer hidden mt-3 text-sm leading-relaxed" style="color:var(--muted)">
+          Sí, GuardianAV funciona en Windows 10 y Windows 11 de 64 bits. No necesita instalar nada extra, solo ejecutar el archivo.
+        </p>
+      </div>
+      <div class="feature-card p-6 rounded-xl cursor-pointer" onclick="toggleFaq(this)">
+        <div class="flex justify-between items-center">
+          <h3 class="font-bold">¿Puedo usarlo en más de una PC?</h3>
+          <svg class="w-5 h-5 faq-icon transition-transform" fill="none" stroke="#00d4ff" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </div>
+        <p class="faq-answer hidden mt-3 text-sm leading-relaxed" style="color:var(--muted)">
+          Cada licencia es para 1 PC. Si necesitás para más equipos, contactanos y te hacemos un precio especial por pack.
+        </p>
+      </div>
+      <div class="feature-card p-6 rounded-xl cursor-pointer" onclick="toggleFaq(this)">
+        <div class="flex justify-between items-center">
+          <h3 class="font-bold">¿Qué pasa si tengo otro antivirus instalado?</h3>
+          <svg class="w-5 h-5 faq-icon transition-transform" fill="none" stroke="#00d4ff" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </div>
+        <p class="faq-answer hidden mt-3 text-sm leading-relaxed" style="color:var(--muted)">
+          GuardianAV puede convivir con Windows Defender sin problemas. Si tenés Avast u otro antivirus de terceros, recomendamos desinstalarlo primero para evitar conflictos.
+        </p>
+      </div>
+
+      <!-- FAQ SmartScreen -->
+      <div class="feature-card p-6 rounded-xl cursor-pointer" onclick="toggleFaq(this)">
+        <div class="flex justify-between items-center">
+          <h3 class="font-bold">¿Por qué Windows dice "Windows protegió su PC" al ejecutarlo?</h3>
+          <svg class="w-5 h-5 faq-icon transition-transform" fill="none" stroke="#00d4ff" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+        </div>
+        <p class="faq-answer hidden mt-3 text-sm leading-relaxed" style="color:var(--muted)">
+          Eso es SmartScreen de Windows, que bloquea programas nuevos que todavía no están en su base de datos. <strong style="color:#e0f0ff">No significa que sea un virus</strong>, es solo porque GuardianAV es reciente. Para continuar: hacé clic en <strong style="color:#00d4ff">"Más información"</strong> y luego en <strong style="color:#00d4ff">"Ejecutar de todas formas"</strong>. El programa es 100% seguro.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer class="py-10 text-center" style="border-top:1px solid var(--border);">
+  <div class="mono text-sm" style="color:var(--cyan)">GUARDIAN<span style="color:#e0f0ff">AV</span></div>
+  <p class="text-xs mt-2" style="color:var(--muted)">© 2025 Todos los derechos reservados</p>
+</footer>
+
+<!-- MODAL COMPRA -->
+<div id="modal-compra" class="modal-overlay" onclick="if(event.target===this) this.classList.remove('active')">
+  <div class="w-full max-w-md mx-4 p-8 rounded-2xl relative" style="background:var(--card); border:2px solid var(--cyan);">
+    <button onclick="document.getElementById('modal-compra').classList.remove('active')"
+      class="absolute top-4 right-4 text-2xl cursor-pointer hover:opacity-70" style="color:var(--muted)">✕</button>
+
+    <div class="text-center mb-6">
+      <div class="mono font-bold text-xl mb-1" style="color:var(--cyan)">FINALIZAR COMPRA</div>
+      <p class="text-sm" style="color:var(--muted)">Completá tus datos — te enviamos todo por email</p>
+    </div>
+
+    <form id="form-compra" onsubmit="procesarCompra(event)" class="space-y-4">
+      <div>
+        <label class="block text-sm mb-2 mono" style="color:var(--muted)">NOMBRE COMPLETO</label>
+        <input type="text" id="nombre" required placeholder="Juan García"
+          class="w-full px-4 py-3 rounded-lg text-sm outline-none transition-all"
+          style="background:#060d14; border:1px solid var(--border); color:#e0f0ff;"
+          onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+      <div>
+        <label class="block text-sm mb-2 mono" style="color:var(--muted)">EMAIL</label>
+        <input type="email" id="email" required placeholder="tu@email.com"
+          class="w-full px-4 py-3 rounded-lg text-sm outline-none transition-all"
+          style="background:#060d14; border:1px solid var(--border); color:#e0f0ff;"
+          onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+      <div>
+        <label class="block text-sm mb-2 mono" style="color:var(--muted)">CONFIRMAR EMAIL</label>
+        <input type="email" id="email2" required placeholder="tu@email.com"
+          class="w-full px-4 py-3 rounded-lg text-sm outline-none transition-all"
+          style="background:#060d14; border:1px solid var(--border); color:#e0f0ff;"
+          onfocus="this.style.borderColor='var(--cyan)'" onblur="this.style.borderColor='var(--border)'">
+      </div>
+
+      <div id="error-msg" class="text-sm text-center hidden" style="color:var(--red);"></div>
+
+      <button type="submit" id="btn-pagar"
+        class="btn-green w-full py-4 rounded-xl font-black text-lg">
+        IR A PAGAR CON MERCADOPAGO
+      </button>
+
+      <p class="text-center text-xs" style="color:var(--muted)">
+        Pago 100% seguro · Tarjetas · Transferencia · Efectivo<br>
+        Recibís el código en tu email automáticamente
+      </p>
+    </form>
+  </div>
+</div>
+
+<script>
+// Cuenta regresiva — 48 horas desde primera visita
+function initCountdown() {
+  const KEY = 'guardian_deadline';
+  let deadline = localStorage.getItem(KEY);
+  if (!deadline) {
+    deadline = Date.now() + 48 * 60 * 60 * 1000;
+    localStorage.setItem(KEY, deadline);
+  }
+  function update() {
+    const diff = deadline - Date.now();
+    if (diff <= 0) {
+      ['countdown','countdown-banner'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.textContent = '¡Última oportunidad!';
+      });
+      return;
+    }
+    const h = Math.floor(diff / 3600000);
+    const m = Math.floor((diff % 3600000) / 60000);
+    const s = Math.floor((diff % 60000) / 1000);
+    const txt = `Oferta termina en: ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    ['countdown','countdown-banner'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = txt;
+    });
+    setTimeout(update, 1000);
+  }
+  update();
+}
+initCountdown();
+
+function toggleFaq(el) {
+  const answer = el.querySelector('.faq-answer');
+  const icon   = el.querySelector('.faq-icon');
+  answer.classList.toggle('hidden');
+  icon.style.transform = answer.classList.contains('hidden') ? '' : 'rotate(180deg)';
+}
+
+async function procesarCompra(e) {
+  e.preventDefault();
+  const nombre = document.getElementById('nombre').value.trim();
+  const email  = document.getElementById('email').value.trim();
+  const email2 = document.getElementById('email2').value.trim();
+  const errEl  = document.getElementById('error-msg');
+  const btn    = document.getElementById('btn-pagar');
+
+  if (email !== email2) {
+    errEl.textContent = 'Los emails no coinciden. Verificá.';
+    errEl.classList.remove('hidden');
+    return;
+  }
+
+  errEl.classList.add('hidden');
+  btn.textContent = 'Generando link de pago...';
+  btn.disabled    = true;
+
+  try {
+    const res = await fetch('/crear-pago', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre, email })
+    });
+    const data = await res.json();
+    if (data.init_point) {
+      window.location.href = data.init_point;
+    } else {
+      throw new Error(data.error || 'Error desconocido');
+    }
+  } catch (err) {
+    errEl.textContent = 'Error al procesar el pago. Intentá de nuevo.';
+    errEl.classList.remove('hidden');
+    btn.textContent = 'IR A PAGAR CON MERCADOPAGO';
+    btn.disabled    = false;
+  }
+}
+</script>
+</body>
+</html>
