@@ -143,6 +143,10 @@
       <a href="#features" class="hover:text-white transition-colors cursor-pointer">Funciones</a>
       <a href="#pricing" class="hover:text-white transition-colors cursor-pointer">Precio</a>
       <a href="#faq" class="hover:text-white transition-colors cursor-pointer">FAQ</a>
+      <button onclick="document.getElementById('modal-afiliado').classList.add('active')"
+        class="hover:text-white transition-colors cursor-pointer" style="background:none;border:none;color:var(--green);font-weight:600;">
+        Quiero vender
+      </button>
     </div>
     <a href="#pricing" class="btn-cyan mono text-sm font-bold px-5 py-2 rounded">[ COMPRAR ]</a>
   </div>
@@ -512,6 +516,36 @@
   </div>
 </section>
 
+<!-- SECCION AFILIADOS -->
+<section class="py-20" style="background:rgba(0,255,136,0.03); border-top:1px solid rgba(0,255,136,0.15); border-bottom:1px solid rgba(0,255,136,0.15);">
+  <div class="max-w-4xl mx-auto px-6 text-center">
+    <div class="mono text-sm mb-3" style="color:var(--green)">>> PROGRAMA DE AFILIADOS</div>
+    <h2 class="text-4xl font-black mb-4">¿Querés ganar vendiendo GuardianAV?</h2>
+    <p class="mb-4 text-lg" style="color:var(--muted)">
+      Compartís tu link. Cuando alguien compra por tu link, <strong style="color:var(--green)">te llevás el 20% de comisión</strong> — automáticamente.
+    </p>
+    <div class="flex flex-wrap justify-center gap-8 mb-10">
+      <div class="text-center">
+        <div class="mono font-bold text-3xl mb-1" style="color:var(--green)">20%</div>
+        <div class="text-sm" style="color:var(--muted)">Comisión por venta</div>
+      </div>
+      <div class="text-center">
+        <div class="mono font-bold text-3xl mb-1" style="color:var(--cyan)">$1.599</div>
+        <div class="text-sm" style="color:var(--muted)">Por cada venta</div>
+      </div>
+      <div class="text-center">
+        <div class="mono font-bold text-3xl mb-1" style="color:var(--yellow)">∞</div>
+        <div class="text-sm" style="color:var(--muted)">Sin límite de ventas</div>
+      </div>
+    </div>
+    <button onclick="document.getElementById('modal-afiliado').classList.add('active')"
+      class="btn-green px-10 py-5 rounded-xl text-xl font-black">
+      OBTENER MI LINK DE VENTAS
+    </button>
+    <p class="text-xs mt-4" style="color:var(--muted)">Gratis · Sin inversión · Recibís tu link al instante</p>
+  </div>
+</section>
+
 <!-- FOOTER -->
 <footer class="py-10 text-center" style="border-top:1px solid var(--border);">
   <div class="mono text-sm" style="color:var(--cyan)">GUARDIAN<span style="color:#e0f0ff">AV</span></div>
@@ -567,6 +601,60 @@
   </div>
 </div>
 
+<!-- MODAL AFILIADO -->
+<div id="modal-afiliado" class="modal-overlay" onclick="if(event.target===this) this.classList.remove('active')">
+  <div class="w-full max-w-md mx-4 p-8 rounded-2xl relative" style="background:var(--card); border:2px solid var(--green); box-shadow:0 0 40px rgba(0,255,136,0.2);">
+    <button onclick="document.getElementById('modal-afiliado').classList.remove('active')"
+      class="absolute top-4 right-4 text-2xl cursor-pointer hover:opacity-70" style="color:var(--muted)">✕</button>
+
+    <!-- Paso 1: Formulario -->
+    <div id="afiliado-form">
+      <div class="text-center mb-6">
+        <div class="mono font-bold text-xl mb-1" style="color:var(--green)">QUIERO VENDER GUARDIANAV</div>
+        <p class="text-sm" style="color:var(--muted)">Completá tus datos y recibís tu link único al instante</p>
+      </div>
+      <form onsubmit="registrarAfiliado(event)" class="space-y-4">
+        <div>
+          <label class="block text-sm mb-2 mono" style="color:var(--muted)">TU NOMBRE O USUARIO</label>
+          <input type="text" id="af-nombre" required placeholder="Ej: Maria, LucasGamer, TechChannel"
+            class="w-full px-4 py-3 rounded-lg text-sm outline-none"
+            style="background:#060d14; border:1px solid var(--border); color:#e0f0ff;"
+            onfocus="this.style.borderColor='var(--green)'" onblur="this.style.borderColor='var(--border)'">
+          <p class="text-xs mt-1" style="color:var(--muted)">Este nombre aparece en tu link. Sin espacios ni símbolos.</p>
+        </div>
+        <div>
+          <label class="block text-sm mb-2 mono" style="color:var(--muted)">TU EMAIL (para recibir los pagos)</label>
+          <input type="email" id="af-email" required placeholder="tu@email.com"
+            class="w-full px-4 py-3 rounded-lg text-sm outline-none"
+            style="background:#060d14; border:1px solid var(--border); color:#e0f0ff;"
+            onfocus="this.style.borderColor='var(--green)'" onblur="this.style.borderColor='var(--border)'">
+        </div>
+        <div id="af-error" class="text-sm text-center hidden" style="color:var(--red);"></div>
+        <button type="submit" id="af-btn" class="btn-green w-full py-4 rounded-xl font-black text-lg">
+          OBTENER MI LINK
+        </button>
+      </form>
+    </div>
+
+    <!-- Paso 2: Éxito con link -->
+    <div id="afiliado-exito" class="hidden text-center">
+      <div class="mb-4">
+        <svg width="60" height="60" viewBox="0 0 60 60" class="mx-auto mb-4">
+          <circle cx="30" cy="30" r="28" fill="none" stroke="#00ff88" stroke-width="3"/>
+          <path d="M18 30 L26 38 L42 22" fill="none" stroke="#00ff88" stroke-width="4" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <div class="mono font-bold text-xl mb-2" style="color:var(--green)">¡Tu link está listo!</div>
+        <p class="text-sm mb-4" style="color:var(--muted)">Compartí este link. Cada venta que viene por acá te da el 20% de comisión.</p>
+      </div>
+      <div class="p-4 rounded-lg mb-4 text-sm font-bold mono break-all" style="background:#060d14; border:2px solid var(--green); color:var(--green);" id="af-link-display"></div>
+      <button onclick="copiarLinkAfiliado()" class="btn-green w-full py-3 rounded-xl font-black mb-3">
+        COPIAR LINK
+      </button>
+      <p class="text-xs" style="color:var(--muted)">Las comisiones se transfieren manualmente por WhatsApp al acumular ventas.<br>Ante cualquier duda escribinos.</p>
+    </div>
+  </div>
+</div>
+
 <script>
 // Cuenta regresiva — 48 horas desde primera visita
 function initCountdown() {
@@ -604,6 +692,53 @@ function toggleFaq(el) {
   const icon   = el.querySelector('.faq-icon');
   answer.classList.toggle('hidden');
   icon.style.transform = answer.classList.contains('hidden') ? '' : 'rotate(180deg)';
+}
+
+let _linkAfiliado = "";
+
+async function registrarAfiliado(e) {
+  e.preventDefault();
+  const nombre = document.getElementById('af-nombre').value.trim();
+  const email  = document.getElementById('af-email').value.trim();
+  const errEl  = document.getElementById('af-error');
+  const btn    = document.getElementById('af-btn');
+
+  errEl.classList.add('hidden');
+  btn.textContent = 'Generando tu link...';
+  btn.disabled = true;
+
+  try {
+    const res  = await fetch('/registro-afiliado', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nombre, email })
+    });
+    const data = await res.json();
+    if (data.ok) {
+      _linkAfiliado = data.link;
+      document.getElementById('af-link-display').textContent = data.link;
+      document.getElementById('afiliado-form').classList.add('hidden');
+      document.getElementById('afiliado-exito').classList.remove('hidden');
+    } else {
+      errEl.textContent = data.msg || 'Error al registrarse';
+      errEl.classList.remove('hidden');
+      btn.textContent = 'OBTENER MI LINK';
+      btn.disabled = false;
+    }
+  } catch (err) {
+    errEl.textContent = 'Error de conexión. Intentá de nuevo.';
+    errEl.classList.remove('hidden');
+    btn.textContent = 'OBTENER MI LINK';
+    btn.disabled = false;
+  }
+}
+
+function copiarLinkAfiliado() {
+  navigator.clipboard.writeText(_linkAfiliado).then(() => {
+    const btn = document.querySelector('#afiliado-exito button');
+    btn.textContent = '¡COPIADO!';
+    setTimeout(() => { btn.textContent = 'COPIAR LINK'; }, 2000);
+  });
 }
 
 async function procesarCompra(e) {

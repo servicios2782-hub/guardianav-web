@@ -454,6 +454,51 @@ def ver_ventas():
     </html>"""
 
 
+AFILIADOS_FILE = Path("afiliados.json")
+
+def load_afiliados() -> list:
+    if AFILIADOS_FILE.exists():
+        return json.loads(AFILIADOS_FILE.read_text())
+    return []
+
+def save_afiliados(data: list):
+    AFILIADOS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+
+
+@app.route("/registro-afiliado", methods=["POST"])
+def registro_afiliado():
+    """Un influencer se registra y recibe su link único."""
+    data   = request.json or {}
+    nombre = data.get("nombre", "").strip().upper()
+    email  = data.get("email", "").strip()
+    if not nombre or not email:
+        return jsonify({"ok": False, "msg": "Completá todos los campos"}), 400
+
+    # Solo letras y números en el código
+    codigo_ref = "".join(c for c in nombre if c.isalnum())[:15]
+    if not codigo_ref:
+        return jsonify({"ok": False, "msg": "Nombre inválido"}), 400
+
+    afiliados = load_afiliados()
+    # Verificar si ya existe
+    existente = next((a for a in afiliados if a["ref"] == codigo_ref), None)
+    if existente:
+        link = f"{BASE_URL}/?ref={codigo_ref}"
+        return jsonify({"ok": True, "link": link, "ref": codigo_ref, "nuevo": False})
+
+    afiliados.append({
+        "ref":    codigo_ref,
+        "nombre": nombre,
+        "email":  email,
+        "fecha":  datetime.now().isoformat(),
+    })
+    save_afiliados(afiliados)
+    logging.info(f"Nuevo afiliado: {nombre} ({email}) — ref={codigo_ref}")
+
+    link = f"{BASE_URL}/?ref={codigo_ref}"
+    return jsonify({"ok": True, "link": link, "ref": codigo_ref, "nuevo": True})
+
+
 @app.route("/afiliados", methods=["GET"])
 def ver_afiliados():
     """Panel de afiliados — cuántas ventas trajo cada influencer."""
