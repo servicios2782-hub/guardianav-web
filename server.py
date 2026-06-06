@@ -519,7 +519,7 @@ def ver_afiliados():
         f"<td style='color:#00d4ff;padding:10px'>{ref}</td>"
         f"<td style='padding:10px'>{d['ventas']}</td>"
         f"<td style='color:#00ff88;padding:10px'>${d['monto']:,.0f}</td>"
-        f"<td style='color:#ffcc00;padding:10px'>${d['monto']*0.20:,.0f} (20%)</td>"
+        f"<td style='color:#ffcc00;padding:10px'>${d['ventas'] * 3000:,.0f} ($3.000/venta)</td>"
         f"<td style='padding:10px;font-size:12px'>{BASE_URL}/?ref={ref}</td>"
         f"</tr>"
         for ref, d in sorted(stats.items(), key=lambda x: x[1]["ventas"], reverse=True)
