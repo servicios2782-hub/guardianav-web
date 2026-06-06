@@ -325,31 +325,33 @@ def pago_pendiente():
 @app.route("/webhook-hotmart", methods=["POST"])
 def webhook_hotmart():
     """Recibe notificación de Hotmart cuando se aprueba una compra."""
-    data = request.json or {}
-    logging.info(f"Webhook Hotmart recibido: {json.dumps(data)[:300]}")
-
-    # Hotmart envía el evento dentro de "event" y los datos en "data"
-    event = data.get("event", "")
-    if event not in ("PURCHASE_APPROVED", "PURCHASE_COMPLETE"):
-        return "", 200
-
     try:
-        buyer = data.get("data", {}).get("buyer", {})
+        raw = request.get_data(as_text=True)
+        logging.info(f"Webhook Hotmart RAW: {raw[:500]}")
+        data = request.get_json(force=True, silent=True) or {}
+
+        event = data.get("event", "")
+        logging.info(f"Webhook Hotmart evento: {event}")
+
+        if event not in ("PURCHASE_APPROVED", "PURCHASE_COMPLETE"):
+            return jsonify({"ok": True}), 200
+
+        inner = data.get("data", {})
+        buyer = inner.get("buyer", {})
         nombre = buyer.get("name", "Cliente")
         email  = buyer.get("email", "")
 
         if not email:
             logging.warning("Webhook Hotmart sin email")
-            return "", 200
+            return jsonify({"ok": True}), 200
 
-        # Evitar duplicados
-        purchase = data.get("data", {}).get("purchase", {})
-        order_id = str(purchase.get("transaction", purchase.get("order_date", "")))
+        purchase = inner.get("purchase", {})
+        order_id = str(purchase.get("transaction", data.get("id", datetime.now().isoformat())))
 
         db = load_db()
         if any(v.get("pago_id") == order_id for v in db):
             logging.info(f"Hotmart orden {order_id} ya procesada")
-            return "", 200
+            return jsonify({"ok": True}), 200
 
         codigo = asignar_codigo()
         db.append({
@@ -369,7 +371,7 @@ def webhook_hotmart():
     except Exception as e:
         logging.error(f"Error procesando webhook Hotmart: {e}")
 
-    return "", 200
+    return jsonify({"ok": True}), 200
 
 
 @app.route("/webhook-ml", methods=["POST"])
