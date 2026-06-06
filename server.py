@@ -322,6 +322,56 @@ def pago_pendiente():
     </html>"""
 
 
+@app.route("/webhook-hotmart", methods=["POST"])
+def webhook_hotmart():
+    """Recibe notificación de Hotmart cuando se aprueba una compra."""
+    data = request.json or {}
+    logging.info(f"Webhook Hotmart recibido: {json.dumps(data)[:300]}")
+
+    # Hotmart envía el evento dentro de "event" y los datos en "data"
+    event = data.get("event", "")
+    if event not in ("PURCHASE_APPROVED", "PURCHASE_COMPLETE"):
+        return "", 200
+
+    try:
+        buyer = data.get("data", {}).get("buyer", {})
+        nombre = buyer.get("name", "Cliente")
+        email  = buyer.get("email", "")
+
+        if not email:
+            logging.warning("Webhook Hotmart sin email")
+            return "", 200
+
+        # Evitar duplicados
+        purchase = data.get("data", {}).get("purchase", {})
+        order_id = str(purchase.get("transaction", purchase.get("order_date", "")))
+
+        db = load_db()
+        if any(v.get("pago_id") == order_id for v in db):
+            logging.info(f"Hotmart orden {order_id} ya procesada")
+            return "", 200
+
+        codigo = asignar_codigo()
+        db.append({
+            "pago_id": order_id,
+            "nombre":  nombre,
+            "email":   email,
+            "codigo":  codigo,
+            "fecha":   datetime.now().isoformat(),
+            "monto":   purchase.get("price", {}).get("value", 0),
+            "fuente":  "hotmart",
+        })
+        save_db(db)
+
+        enviar_email(nombre, email, codigo)
+        logging.info(f"VENTA HOTMART — {nombre} ({email}) — Codigo: {codigo}")
+
+    except Exception as e:
+        logging.error(f"Error procesando webhook Hotmart: {e}")
+
+    return "", 200
+
+
 @app.route("/webhook-ml", methods=["POST"])
 def webhook_ml():
     """Recibe notificación de MercadoLibre cuando se concreta una orden."""
