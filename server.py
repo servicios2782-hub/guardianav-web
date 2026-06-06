@@ -102,6 +102,7 @@ def enviar_email(nombre: str, email: str, codigo: str):
         {codigo}
       </div>
       <p style="color:#3a6080; font-size:12px; margin-top:8px;">Guardá este código — lo vas a necesitar para activar el programa</p>
+      <p style="color:#ffcc00; font-size:12px; margin-top:4px;">⚠️ Si no encontrabas este mail, revisá la carpeta de <strong>SPAM</strong> o <strong>No deseado</strong>.</p>
     </div>
 
     <div style="background:#0b1929; border:1px solid #0a2d4a; border-radius:12px; padding:28px; margin-bottom:24px;">
@@ -289,6 +290,7 @@ def pago_exitoso():
       </svg>
       <h1 style="color:#00ff88;font-size:32px;margin-bottom:12px;">¡Pago aprobado!</h1>
       <p style="color:#3a6080;font-size:16px;margin-bottom:8px;">Revisá tu email — te enviamos el código de activación.</p>
+      <p style="color:#ffcc00;font-size:14px;margin-bottom:8px;">⚠️ Si no lo encontrás, revisá la carpeta de <strong>SPAM</strong> o <strong>No deseado</strong>.</p>
       <p style="color:#3a6080;font-size:13px;">Redirigiendo en 5 segundos...</p>
     </body>
     </html>"""
