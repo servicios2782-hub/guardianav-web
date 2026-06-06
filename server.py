@@ -28,6 +28,9 @@ BASE_URL = "https://guardianav-web-production.up.railway.app"
 
 # Clave para generar códigos (tiene que ser igual a la del antivirus)
 _SECRET = b"GuardianAV-JorgeD-RioSegundo-2025"
+
+# Access Token de MercadoLibre (se completa después de crear la app)
+ML_ACCESS_TOKEN = os.environ.get("ML_ACCESS_TOKEN", "")
 # ══════════════════════════════════════════════════════════
 
 app = Flask(__name__, static_folder=".", static_url_path="")
@@ -303,6 +306,67 @@ def pago_pendiente():
       <p style="color:#3a6080;">Cuando se acredite te enviamos el código por email automáticamente.</p>
     </body>
     </html>"""
+
+
+@app.route("/webhook-ml", methods=["POST"])
+def webhook_ml():
+    """Recibe notificación de MercadoLibre cuando se concreta una orden."""
+    data    = request.json or {}
+    topic   = data.get("topic", "") or request.args.get("topic", "")
+    resource = data.get("resource", "") or request.args.get("resource", "")
+
+    logging.info(f"Webhook ML recibido: topic={topic} resource={resource}")
+
+    if topic not in ("orders_v2", "orders"):
+        return "", 200
+
+    # Obtener ID de la orden
+    order_id = resource.split("/")[-1] if resource else data.get("id")
+    if not order_id:
+        return "", 200
+
+    try:
+        import urllib.request as _req
+        ml_url = f"https://api.mercadolibre.com/orders/{order_id}?access_token={ML_ACCESS_TOKEN}"
+        with _req.urlopen(ml_url, timeout=10) as resp:
+            orden = json.loads(resp.read().decode())
+
+        estado = orden.get("status")
+        if estado != "paid":
+            logging.info(f"Orden ML {order_id} en estado: {estado}")
+            return "", 200
+
+        # Datos del comprador
+        buyer  = orden.get("buyer", {})
+        nombre = f"{buyer.get('first_name', '')} {buyer.get('last_name', '')}".strip() or "Cliente"
+        email  = buyer.get("email", "")
+        monto  = orden.get("total_amount", 0)
+
+        # Verificar que no se procese dos veces
+        db = load_db()
+        if any(v.get("pago_id") == str(order_id) for v in db):
+            logging.info(f"Orden ML {order_id} ya procesada")
+            return "", 200
+
+        codigo = asignar_codigo()
+        db.append({
+            "pago_id": str(order_id),
+            "nombre":  nombre,
+            "email":   email,
+            "codigo":  codigo,
+            "fecha":   datetime.now().isoformat(),
+            "monto":   monto,
+            "fuente":  "mercadolibre",
+        })
+        save_db(db)
+
+        enviar_email(nombre, email, codigo)
+        logging.info(f"VENTA ML PROCESADA — {nombre} ({email}) — Codigo: {codigo}")
+
+    except Exception as e:
+        logging.error(f"Error procesando webhook ML: {e}")
+
+    return "", 200
 
 
 @app.route("/activar", methods=["POST"])
