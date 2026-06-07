@@ -4,7 +4,7 @@ MercadoPago + envío automático de email con código de activación
 © 2025 Jorge D. — Río Segundo
 """
 
-import os, json, hmac, hashlib, smtplib, logging
+import os, json, hmac, hashlib, smtplib, logging, socket
 from pathlib import Path
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
@@ -31,6 +31,21 @@ DATABASE_URL     = os.environ.get("DATABASE_URL", "")
 app = Flask(__name__, static_folder=".", static_url_path="")
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
+
+
+class SMTP_SSL_IPv4(smtplib.SMTP_SSL):
+    # Railway resuelve smtp.gmail.com a IPv6 y no tiene ruta de salida; smtplib
+    # no reintenta con IPv4, así que la conexión muere con [Errno 101].
+    def _get_socket(self, host, port, timeout):
+        for af, socktype, proto, _, sa in socket.getaddrinfo(
+            host, port, socket.AF_INET, socket.SOCK_STREAM
+        ):
+            sock = socket.socket(af, socktype, proto)
+            if timeout is not socket._GLOBAL_DEFAULT_TIMEOUT:
+                sock.settimeout(timeout)
+            sock.connect(sa)
+            return self.context.wrap_socket(sock, server_hostname=self._host)
+        raise OSError(f"No IPv4 address found for {host}")
 
 
 # ── PostgreSQL ─────────────────────────────────────────────────────────────────
@@ -270,7 +285,7 @@ def enviar_email(nombre: str, email: str, codigo: str):
     msg["To"]      = email
     msg.attach(MIMEText(html, "html"))
 
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+    with SMTP_SSL_IPv4("smtp.gmail.com", 465) as s:
         s.login(EMAIL_REMITENTE, EMAIL_PASSWORD)
         s.sendmail(EMAIL_REMITENTE, email, msg.as_string())
 
@@ -303,7 +318,7 @@ def enviar_email_admin(nombre: str, email: str, codigo: str, monto, fuente: str,
     msg["From"]    = f"{EMAIL_NOMBRE} <{EMAIL_REMITENTE}>"
     msg["To"]      = EMAIL_REMITENTE
     msg.attach(MIMEText(html, "html"))
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+    with SMTP_SSL_IPv4("smtp.gmail.com", 465) as s:
         s.login(EMAIL_REMITENTE, EMAIL_PASSWORD)
         s.sendmail(EMAIL_REMITENTE, EMAIL_REMITENTE, msg.as_string())
     logging.info(f"Email admin enviado — venta de {nombre}")
@@ -347,7 +362,7 @@ def enviar_email_afiliado(ref: str, nombre_cliente: str, monto):
         msg["From"]    = f"{EMAIL_NOMBRE} <{EMAIL_REMITENTE}>"
         msg["To"]      = email_afiliado
         msg.attach(MIMEText(html, "html"))
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+        with SMTP_SSL_IPv4("smtp.gmail.com", 465) as s:
             s.login(EMAIL_REMITENTE, EMAIL_PASSWORD)
             s.sendmail(EMAIL_REMITENTE, email_afiliado, msg.as_string())
         logging.info(f"Email afiliado enviado a {email_afiliado} — ref={ref}")
