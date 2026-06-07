@@ -11,52 +11,178 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from flask import Flask, request, jsonify, send_from_directory, make_response
 import mercadopago
+import psycopg2
+from psycopg2.extras import RealDictCursor
 
 # ══════════════════════════════════════════════════════════
-# CONFIGURACIÓN — Completá estos datos
+# CONFIGURACIÓN
 # ══════════════════════════════════════════════════════════
-MP_ACCESS_TOKEN = "APP_USR-8307892353327077-060516-75e642ffb57b802fc99455d2a86f2ee4-3452014381"   # ← pegá tu token acá
-PRECIO_ARS      = 7999                                # precio en pesos
-
-# Email desde donde se envía (usá Gmail)
-EMAIL_REMITENTE  = "dimeojorgeoscar@gmail.com"               # ← tu Gmail
-EMAIL_PASSWORD   = "dpklvzzwogzevjfl"             # ← contraseña de app Gmail
+MP_ACCESS_TOKEN  = os.environ.get("MP_ACCESS_TOKEN", "")
+PRECIO_ARS       = 7999
+EMAIL_REMITENTE  = os.environ.get("EMAIL_REMITENTE", "dimeojorgeoscar@gmail.com")
+EMAIL_PASSWORD   = os.environ.get("EMAIL_PASSWORD", "")
 EMAIL_NOMBRE     = "GuardianAV"
-
-# URL de tu servidor (cuando lo subas a internet)
-BASE_URL = "https://guardianav-web-production.up.railway.app"
-
-# Clave para generar códigos (tiene que ser igual a la del antivirus)
-_SECRET = b"GuardianAV-JorgeD-RioSegundo-2025"
-
-# Access Token de MercadoLibre (se completa después de crear la app)
-ML_ACCESS_TOKEN = os.environ.get("ML_ACCESS_TOKEN", "")
+BASE_URL         = "https://guardianav-web-production.up.railway.app"
+_SECRET          = b"GuardianAV-JorgeD-RioSegundo-2025"
+ML_ACCESS_TOKEN  = os.environ.get("ML_ACCESS_TOKEN", "")
+DATABASE_URL     = os.environ.get("DATABASE_URL", "")
 # ══════════════════════════════════════════════════════════
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 
-# Base de datos simple en JSON
-DB_FILE    = Path("ventas.json")
-CODES_USED = Path("codigos_usados.json")
+
+# ── PostgreSQL ─────────────────────────────────────────────────────────────────
+def get_conn():
+    return psycopg2.connect(DATABASE_URL, sslmode="require")
+
+def init_db():
+    """Crea las tablas si no existen."""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS ventas (
+                    id SERIAL PRIMARY KEY,
+                    pago_id TEXT UNIQUE,
+                    nombre TEXT,
+                    email TEXT,
+                    codigo TEXT,
+                    fecha TEXT,
+                    monto REAL,
+                    fuente TEXT DEFAULT 'web',
+                    ref TEXT DEFAULT ''
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS codigos_usados (
+                    id SERIAL PRIMARY KEY,
+                    serial TEXT UNIQUE,
+                    code TEXT UNIQUE,
+                    asignado TEXT,
+                    activado BOOLEAN DEFAULT FALSE,
+                    dispositivo TEXT DEFAULT '',
+                    fecha_activacion TEXT DEFAULT ''
+                );
+            """)
+            cur.execute("""
+                CREATE TABLE IF NOT EXISTS afiliados (
+                    id SERIAL PRIMARY KEY,
+                    ref TEXT UNIQUE,
+                    nombre TEXT,
+                    email TEXT,
+                    fecha TEXT
+                );
+            """)
+        conn.commit()
+    logging.info("Base de datos PostgreSQL inicializada")
+
+try:
+    init_db()
+except Exception as e:
+    logging.error(f"Error iniciando DB: {e}")
 
 
 def load_db() -> list:
-    if DB_FILE.exists():
-        return json.loads(DB_FILE.read_text())
-    return []
+    try:
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM ventas ORDER BY id DESC")
+                return [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        logging.error(f"load_db error: {e}")
+        return []
 
-def save_db(data: list):
-    DB_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+def save_venta(entrada: dict):
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO ventas (pago_id, nombre, email, codigo, fecha, monto, fuente, ref)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (pago_id) DO NOTHING
+                """, (
+                    entrada.get("pago_id"), entrada.get("nombre"), entrada.get("email"),
+                    entrada.get("codigo"), entrada.get("fecha"), entrada.get("monto"),
+                    entrada.get("fuente","web"), entrada.get("ref","")
+                ))
+            conn.commit()
+    except Exception as e:
+        logging.error(f"save_venta error: {e}")
+
+def venta_existe(pago_id: str) -> bool:
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1 FROM ventas WHERE pago_id=%s", (str(pago_id),))
+                return cur.fetchone() is not None
+    except Exception as e:
+        logging.error(f"venta_existe error: {e}")
+        return False
 
 def load_used() -> list:
-    if CODES_USED.exists():
-        return json.loads(CODES_USED.read_text())
-    return []
+    try:
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM codigos_usados ORDER BY id")
+                return [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        logging.error(f"load_used error: {e}")
+        return []
 
-def save_used(data: list):
-    CODES_USED.write_text(json.dumps(data, indent=2))
+def save_codigo(entry: dict):
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO codigos_usados (serial, code, asignado)
+                    VALUES (%s,%s,%s) ON CONFLICT (serial) DO NOTHING
+                """, (entry["serial"], entry["code"], entry["asignado"]))
+            conn.commit()
+    except Exception as e:
+        logging.error(f"save_codigo error: {e}")
+
+def activar_codigo(codigo: str, dispositivo: str) -> dict:
+    try:
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM codigos_usados WHERE UPPER(code)=%s", (codigo.upper(),))
+                row = cur.fetchone()
+                if not row:
+                    return {"ok": False, "msg": "Código inválido"}
+                if row["activado"] and row["dispositivo"] != dispositivo:
+                    return {"ok": False, "msg": "Código ya en uso en otro equipo"}
+                cur.execute("""
+                    UPDATE codigos_usados SET activado=TRUE, dispositivo=%s, fecha_activacion=%s
+                    WHERE UPPER(code)=%s
+                """, (dispositivo, datetime.now().isoformat(), codigo.upper()))
+            conn.commit()
+            return {"ok": True, "msg": "Licencia activada correctamente"}
+    except Exception as e:
+        logging.error(f"activar_codigo error: {e}")
+        return {"ok": False, "msg": "Error interno"}
+
+def load_afiliados() -> list:
+    try:
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("SELECT * FROM afiliados ORDER BY id")
+                return [dict(r) for r in cur.fetchall()]
+    except Exception as e:
+        logging.error(f"load_afiliados error: {e}")
+        return []
+
+def save_afiliado(entry: dict):
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    INSERT INTO afiliados (ref, nombre, email, fecha)
+                    VALUES (%s,%s,%s,%s) ON CONFLICT (ref) DO NOTHING
+                """, (entry["ref"], entry["nombre"], entry["email"], entry["fecha"]))
+            conn.commit()
+    except Exception as e:
+        logging.error(f"save_afiliado error: {e}")
 
 
 def generar_codigo(serial: str) -> str:
@@ -71,8 +197,7 @@ def asignar_codigo() -> str:
     i    = len(used) + 1
     serial = f"CLIENTE{i:03d}"
     code   = generar_codigo(serial)
-    used.append({"serial": serial, "code": code, "asignado": datetime.now().isoformat()})
-    save_used(used)
+    save_codigo({"serial": serial, "code": code, "asignado": datetime.now().isoformat()})
     return code
 
 
@@ -241,8 +366,7 @@ def webhook():
         ref_afiliado = ref.get("ref", "")
 
         # Verificar que no se procese dos veces
-        db = load_db()
-        if any(v.get("pago_id") == str(pago_id) for v in db):
+        if venta_existe(str(pago_id)):
             logging.info(f"Pago {pago_id} ya procesado")
             return "", 200
 
@@ -258,16 +382,18 @@ def webhook():
             "fecha":    datetime.now().isoformat(),
             "monto":    pago.get("transaction_amount"),
             "fuente":   "web",
+            "ref":      ref_afiliado,
         }
         if ref_afiliado:
-            entrada["ref"] = ref_afiliado
             logging.info(f"Venta referida por: {ref_afiliado}")
-        db.append(entrada)
-        save_db(db)
+        save_venta(entrada)
 
         # Enviar email
-        enviar_email(nombre, email, codigo)
-        logging.info(f"VENTA PROCESADA — {nombre} ({email}) — Código: {codigo}")
+        try:
+            enviar_email(nombre, email, codigo)
+            logging.info(f"VENTA PROCESADA — {nombre} ({email}) — Código: {codigo}")
+        except Exception as email_err:
+            logging.error(f"ERROR ENVIANDO EMAIL a {email}: {email_err}")
 
     except Exception as e:
         logging.error(f"Error procesando webhook: {e}")
@@ -350,13 +476,12 @@ def webhook_hotmart():
         purchase = inner.get("purchase", {})
         order_id = str(purchase.get("transaction", data.get("id", datetime.now().isoformat())))
 
-        db = load_db()
-        if any(v.get("pago_id") == order_id for v in db):
+        if venta_existe(order_id):
             logging.info(f"Hotmart orden {order_id} ya procesada")
             return jsonify({"ok": True}), 200
 
         codigo = asignar_codigo()
-        db.append({
+        save_venta({
             "pago_id": order_id,
             "nombre":  nombre,
             "email":   email,
@@ -364,11 +489,14 @@ def webhook_hotmart():
             "fecha":   datetime.now().isoformat(),
             "monto":   purchase.get("price", {}).get("value", 0),
             "fuente":  "hotmart",
+            "ref":     "",
         })
-        save_db(db)
 
-        enviar_email(nombre, email, codigo)
-        logging.info(f"VENTA HOTMART — {nombre} ({email}) — Codigo: {codigo}")
+        try:
+            enviar_email(nombre, email, codigo)
+            logging.info(f"VENTA HOTMART — {nombre} ({email}) — Codigo: {codigo}")
+        except Exception as email_err:
+            logging.error(f"ERROR EMAIL HOTMART a {email}: {email_err}")
 
     except Exception as e:
         logging.error(f"Error procesando webhook Hotmart: {e}")
@@ -410,14 +538,12 @@ def webhook_ml():
         email  = buyer.get("email", "")
         monto  = orden.get("total_amount", 0)
 
-        # Verificar que no se procese dos veces
-        db = load_db()
-        if any(v.get("pago_id") == str(order_id) for v in db):
+        if venta_existe(str(order_id)):
             logging.info(f"Orden ML {order_id} ya procesada")
             return "", 200
 
         codigo = asignar_codigo()
-        db.append({
+        save_venta({
             "pago_id": str(order_id),
             "nombre":  nombre,
             "email":   email,
@@ -425,11 +551,14 @@ def webhook_ml():
             "fecha":   datetime.now().isoformat(),
             "monto":   monto,
             "fuente":  "mercadolibre",
+            "ref":     "",
         })
-        save_db(db)
 
-        enviar_email(nombre, email, codigo)
-        logging.info(f"VENTA ML PROCESADA — {nombre} ({email}) — Codigo: {codigo}")
+        try:
+            enviar_email(nombre, email, codigo)
+            logging.info(f"VENTA ML PROCESADA — {nombre} ({email}) — Codigo: {codigo}")
+        except Exception as email_err:
+            logging.error(f"ERROR EMAIL ML a {email}: {email_err}")
 
     except Exception as e:
         logging.error(f"Error procesando webhook ML: {e}")
@@ -450,32 +579,19 @@ def activar_licencia():
     if not codigo:
         return jsonify({"ok": False, "msg": "Código vacío"}), 400
 
-    # Cargar lista de códigos asignados (generados por vos)
-    usados = load_used()
-    entrada = next((u for u in usados if u["code"].upper() == codigo), None)
-
-    if not entrada:
-        return jsonify({"ok": False, "msg": "Código inválido"}), 200
-
-    # Si ya fue activado en otro dispositivo, rechazar
-    if entrada.get("activado") and entrada.get("dispositivo") != dispositivo:
-        return jsonify({"ok": False, "msg": "Código ya en uso en otro equipo"}), 200
-
-    # Primera activación o mismo dispositivo — marcar y guardar
-    entrada["activado"]    = True
-    entrada["dispositivo"] = dispositivo
-    entrada["fecha_activacion"] = datetime.now().isoformat()
-    save_used(usados)
-
-    logging.info(f"ACTIVACION OK — {codigo} — dispositivo: {dispositivo}")
-    return jsonify({"ok": True, "msg": "Licencia activada correctamente"}), 200
+    resultado = activar_codigo(codigo, dispositivo)
+    if resultado["ok"]:
+        logging.info(f"ACTIVACION OK — {codigo} — dispositivo: {dispositivo}")
+    else:
+        logging.warning(f"ACTIVACION FALLIDA — {codigo}: {resultado['msg']}")
+    return jsonify(resultado), 200
 
 
 @app.route("/ventas", methods=["GET"])
 def ver_ventas():
     """Panel simple para ver las ventas (solo para vos)."""
     db    = load_db()
-    total = sum(v.get("monto", 0) for v in db)
+    total = sum(v.get("monto", 0) or 0 for v in db)
     usados = load_used()
     activados = sum(1 for u in usados if u.get("activado"))
     rows  = "".join(
@@ -534,19 +650,17 @@ def registro_afiliado():
         return jsonify({"ok": False, "msg": "Nombre inválido"}), 400
 
     afiliados = load_afiliados()
-    # Verificar si ya existe
     existente = next((a for a in afiliados if a["ref"] == codigo_ref), None)
     if existente:
         link = f"{BASE_URL}/?ref={codigo_ref}"
         return jsonify({"ok": True, "link": link, "ref": codigo_ref, "nuevo": False})
 
-    afiliados.append({
+    save_afiliado({
         "ref":    codigo_ref,
         "nombre": nombre,
         "email":  email,
         "fecha":  datetime.now().isoformat(),
     })
-    save_afiliados(afiliados)
     logging.info(f"Nuevo afiliado: {nombre} ({email}) — ref={codigo_ref}")
 
     link = f"{BASE_URL}/?ref={codigo_ref}"

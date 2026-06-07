@@ -1,2 +1,3 @@
 flask
 mercadopago
+psycopg2-binary
