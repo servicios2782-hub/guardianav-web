@@ -503,6 +503,19 @@ def webhook():
     return "", 200
 
 
+@app.route("/test-email")
+def test_email():
+    """Envia un email de prueba — sirve para confirmar que el fix de SMTP funciona.
+    Uso: /test-email?to=email@destino.com (si no se pasa to, va al admin)."""
+    destino = request.args.get("to", EMAIL_REMITENTE).strip()
+    try:
+        enviar_email("PRUEBA", destino, "TEST-CODIGO-1234")
+        return jsonify({"ok": True, "mensaje": f"Email enviado a {destino}. Revisá tu bandeja y spam."}), 200
+    except Exception as e:
+        logging.error(f"TEST-EMAIL falló para {destino}: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
+
+
 @app.route("/pago-exitoso")
 def pago_exitoso():
     return """
