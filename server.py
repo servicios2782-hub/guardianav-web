@@ -277,6 +277,85 @@ def enviar_email(nombre: str, email: str, codigo: str):
     logging.info(f"Email enviado a {email}")
 
 
+def enviar_email_admin(nombre: str, email: str, codigo: str, monto, fuente: str, ref: str):
+    """Notifica al admin (Jorge) de cada venta."""
+    ref_txt = f"Referido por: <strong style='color:#00ff88'>{ref}</strong> (+$3.000 ARS comisión)" if ref else "Venta directa (sin afiliado)"
+    html = f"""
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="background:#060d14;color:#e0f0ff;font-family:Arial,sans-serif;padding:30px;">
+  <div style="max-width:500px;margin:0 auto;">
+    <h2 style="color:#00ff88;text-align:center;">💰 NUEVA VENTA — GuardianAV</h2>
+    <div style="background:#0b1929;border:2px solid #00ff88;border-radius:12px;padding:24px;margin:20px 0;">
+      <p><strong style="color:#00d4ff">Cliente:</strong> {nombre}</p>
+      <p><strong style="color:#00d4ff">Email:</strong> {email}</p>
+      <p><strong style="color:#00d4ff">Código asignado:</strong> <span style="color:#ffcc00;font-family:monospace">{codigo}</span></p>
+      <p><strong style="color:#00d4ff">Monto:</strong> <span style="color:#00ff88">${monto}</span></p>
+      <p><strong style="color:#00d4ff">Plataforma:</strong> {fuente}</p>
+      <p><strong style="color:#00d4ff">Afiliado:</strong> {ref_txt}</p>
+    </div>
+    <p style="color:#3a6080;font-size:12px;text-align:center;">Panel de ventas: {BASE_URL}/ventas</p>
+  </div>
+</body></html>
+"""
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = f"💰 Nueva venta GuardianAV — {nombre}"
+    msg["From"]    = f"{EMAIL_NOMBRE} <{EMAIL_REMITENTE}>"
+    msg["To"]      = EMAIL_REMITENTE
+    msg.attach(MIMEText(html, "html"))
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+        s.login(EMAIL_REMITENTE, EMAIL_PASSWORD)
+        s.sendmail(EMAIL_REMITENTE, EMAIL_REMITENTE, msg.as_string())
+    logging.info(f"Email admin enviado — venta de {nombre}")
+
+
+def enviar_email_afiliado(ref: str, nombre_cliente: str, monto):
+    """Notifica al afiliado que realizó una venta."""
+    try:
+        afiliados = load_afiliados()
+        afiliado = next((a for a in afiliados if a["ref"] == ref), None)
+        if not afiliado or not afiliado.get("email"):
+            logging.warning(f"Afiliado {ref} no encontrado o sin email")
+            return
+        email_afiliado = afiliado["email"]
+        nombre_afiliado = afiliado["nombre"]
+        html = f"""
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"></head>
+<body style="background:#060d14;color:#e0f0ff;font-family:Arial,sans-serif;padding:30px;">
+  <div style="max-width:500px;margin:0 auto;">
+    <h2 style="color:#ffcc00;text-align:center;">🔥 ¡VENDISTE — GuardianAV!</h2>
+    <div style="background:#0b1929;border:2px solid #ffcc00;border-radius:12px;padding:24px;margin:20px 0;">
+      <p style="font-size:16px;">Hola <strong style="color:#00d4ff">{nombre_afiliado}</strong>,</p>
+      <p style="color:#a0c0d8;">¡Realizaste una venta a través de tu link de afiliado!</p>
+      <div style="text-align:center;margin:20px 0;padding:16px;background:#060d14;border-radius:8px;">
+        <p style="color:#3a6080;font-size:13px;margin-bottom:4px;">TU COMISIÓN</p>
+        <p style="color:#00ff88;font-size:32px;font-weight:bold;margin:0;">$3.000 ARS</p>
+      </div>
+      <p><strong style="color:#00d4ff">Cliente:</strong> {nombre_cliente}</p>
+      <p><strong style="color:#00d4ff">Tu link:</strong> {BASE_URL}/?ref={ref}</p>
+    </div>
+    <p style="color:#3a6080;font-size:12px;text-align:center;">
+      El pago de tu comisión se coordina con el vendedor.<br>
+      Contacto: {EMAIL_REMITENTE}
+    </p>
+  </div>
+</body></html>
+"""
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = "🔥 ¡Vendiste GuardianAV! — Tu comisión: $3.000 ARS"
+        msg["From"]    = f"{EMAIL_NOMBRE} <{EMAIL_REMITENTE}>"
+        msg["To"]      = email_afiliado
+        msg.attach(MIMEText(html, "html"))
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
+            s.login(EMAIL_REMITENTE, EMAIL_PASSWORD)
+            s.sendmail(EMAIL_REMITENTE, email_afiliado, msg.as_string())
+        logging.info(f"Email afiliado enviado a {email_afiliado} — ref={ref}")
+    except Exception as e:
+        logging.error(f"Error email afiliado {ref}: {e}")
+
+
+
 # ── Rutas ──────────────────────────────────────────────────────────────────────
 
 @app.route("/")
@@ -395,6 +474,14 @@ def webhook():
         except Exception as email_err:
             logging.error(f"ERROR ENVIANDO EMAIL a {email}: {email_err}")
 
+        try:
+            enviar_email_admin(nombre, email, codigo, pago.get("transaction_amount"), "web", ref_afiliado)
+        except Exception as e:
+            logging.error(f"Error email admin: {e}")
+
+        if ref_afiliado:
+            enviar_email_afiliado(ref_afiliado, nombre, pago.get("transaction_amount"))
+
     except Exception as e:
         logging.error(f"Error procesando webhook: {e}")
 
@@ -498,6 +585,12 @@ def webhook_hotmart():
         except Exception as email_err:
             logging.error(f"ERROR EMAIL HOTMART a {email}: {email_err}")
 
+        try:
+            monto_hotmart = purchase.get("price", {}).get("value", 0)
+            enviar_email_admin(nombre, email, codigo, monto_hotmart, "hotmart", "")
+        except Exception as e:
+            logging.error(f"Error email admin hotmart: {e}")
+
     except Exception as e:
         logging.error(f"Error procesando webhook Hotmart: {e}")
 
@@ -559,6 +652,11 @@ def webhook_ml():
             logging.info(f"VENTA ML PROCESADA — {nombre} ({email}) — Codigo: {codigo}")
         except Exception as email_err:
             logging.error(f"ERROR EMAIL ML a {email}: {email_err}")
+
+        try:
+            enviar_email_admin(nombre, email, codigo, monto, "mercadolibre", "")
+        except Exception as e:
+            logging.error(f"Error email admin ML: {e}")
 
     except Exception as e:
         logging.error(f"Error procesando webhook ML: {e}")
@@ -622,17 +720,6 @@ def ver_ventas():
       </table>
     </body>
     </html>"""
-
-
-AFILIADOS_FILE = Path("afiliados.json")
-
-def load_afiliados() -> list:
-    if AFILIADOS_FILE.exists():
-        return json.loads(AFILIADOS_FILE.read_text())
-    return []
-
-def save_afiliados(data: list):
-    AFILIADOS_FILE.write_text(json.dumps(data, indent=2, ensure_ascii=False))
 
 
 @app.route("/registro-afiliado", methods=["POST"])
