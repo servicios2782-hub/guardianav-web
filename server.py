@@ -4,11 +4,10 @@ MercadoPago + envío automático de email con código de activación
 © 2025 Jorge D. — Río Segundo
 """
 
-import os, json, hmac, hashlib, smtplib, logging, socket
+import os, json, hmac, hashlib, logging
 from pathlib import Path
 from datetime import datetime
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
+import requests
 from flask import Flask, request, jsonify, send_from_directory, make_response
 import mercadopago
 import psycopg2
@@ -20,12 +19,16 @@ from psycopg2.extras import RealDictCursor
 MP_ACCESS_TOKEN  = os.environ.get("MP_ACCESS_TOKEN", "")
 PRECIO_ARS       = 7999
 EMAIL_REMITENTE  = os.environ.get("EMAIL_REMITENTE", "dimeojorgeoscar@gmail.com")
-EMAIL_PASSWORD   = os.environ.get("EMAIL_PASSWORD", "")
 EMAIL_NOMBRE     = "GuardianAV"
 BASE_URL         = "https://guardianav-web-production.up.railway.app"
 _SECRET          = b"GuardianAV-JorgeD-RioSegundo-2025"
 ML_ACCESS_TOKEN  = os.environ.get("ML_ACCESS_TOKEN", "")
 DATABASE_URL     = os.environ.get("DATABASE_URL", "")
+
+# Resend — API HTTP por puerto 443 (Railway bloquea SMTP saliente)
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+RESEND_FROM    = f"{EMAIL_NOMBRE} <onboarding@resend.dev>"
+RESEND_TIMEOUT = 15
 # ══════════════════════════════════════════════════════════
 
 app = Flask(__name__, static_folder=".", static_url_path="")
@@ -33,58 +36,28 @@ logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
 
 
-SMTP_TIMEOUT = 15  # segundos — evita que un SMTP colgado bloquee el webhook
-
-
-class SMTP_SSL_IPv4(smtplib.SMTP_SSL):
-    # Railway resuelve smtp.gmail.com a IPv6 y no tiene ruta de salida; smtplib
-    # no reintenta con IPv4, así que la conexión muere con [Errno 101].
-    def _get_socket(self, host, port, timeout):
-        if timeout is socket._GLOBAL_DEFAULT_TIMEOUT:
-            timeout = SMTP_TIMEOUT
-        for af, socktype, proto, _, sa in socket.getaddrinfo(
-            host, port, socket.AF_INET, socket.SOCK_STREAM
-        ):
-            sock = socket.socket(af, socktype, proto)
-            sock.settimeout(timeout)
-            sock.connect(sa)
-            return self.context.wrap_socket(sock, server_hostname=self._host)
-        raise OSError(f"No IPv4 address found for {host}")
-
-
-class SMTP_IPv4(smtplib.SMTP):
-    # Versión IPv4 para STARTTLS (puerto 587). Railway suele dejar salir 587
-    # aunque ahogue 465.
-    def _get_socket(self, host, port, timeout):
-        if timeout is socket._GLOBAL_DEFAULT_TIMEOUT:
-            timeout = SMTP_TIMEOUT
-        for af, socktype, proto, _, sa in socket.getaddrinfo(
-            host, port, socket.AF_INET, socket.SOCK_STREAM
-        ):
-            sock = socket.socket(af, socktype, proto)
-            sock.settimeout(timeout)
-            sock.connect(sa)
-            return sock
-        raise OSError(f"No IPv4 address found for {host}")
-
-
-def _smtp_send(destinatario: str, msg_str: str) -> str:
-    """Envía vía Gmail probando 587 STARTTLS primero y 465 SSL como fallback.
-    Devuelve el puerto usado para que quede registrado en logs."""
-    try:
-        with SMTP_IPv4("smtp.gmail.com", 587, timeout=SMTP_TIMEOUT) as s:
-            s.ehlo()
-            s.starttls()
-            s.ehlo()
-            s.login(EMAIL_REMITENTE, EMAIL_PASSWORD)
-            s.sendmail(EMAIL_REMITENTE, destinatario, msg_str)
-        return "587"
-    except Exception as e:
-        logging.warning(f"SMTP 587 falló ({e}) — reintento con 465")
-        with SMTP_SSL_IPv4("smtp.gmail.com", 465, timeout=SMTP_TIMEOUT) as s:
-            s.login(EMAIL_REMITENTE, EMAIL_PASSWORD)
-            s.sendmail(EMAIL_REMITENTE, destinatario, msg_str)
-        return "465"
+def _resend_send(destinatario: str, asunto: str, html: str):
+    """Manda un email vía Resend API. Lanza excepción con el body si la API
+    devuelve != 2xx."""
+    if not RESEND_API_KEY:
+        raise RuntimeError("RESEND_API_KEY no configurada en el entorno")
+    r = requests.post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "from": RESEND_FROM,
+            "to": [destinatario],
+            "subject": asunto,
+            "html": html,
+            "reply_to": EMAIL_REMITENTE,
+        },
+        timeout=RESEND_TIMEOUT,
+    )
+    if not r.ok:
+        raise RuntimeError(f"Resend {r.status_code}: {r.text}")
 
 
 # ── PostgreSQL ─────────────────────────────────────────────────────────────────
@@ -318,14 +291,8 @@ def enviar_email(nombre: str, email: str, codigo: str):
 </body>
 </html>
 """
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = "GuardianAV — Tu código de activación"
-    msg["From"]    = f"{EMAIL_NOMBRE} <{EMAIL_REMITENTE}>"
-    msg["To"]      = email
-    msg.attach(MIMEText(html, "html"))
-
-    puerto = _smtp_send(email, msg.as_string())
-    logging.info(f"Email enviado a {email} via {puerto}")
+    _resend_send(email, "GuardianAV — Tu código de activación", html)
+    logging.info(f"Email enviado a {email}")
 
 
 def enviar_email_admin(nombre: str, email: str, codigo: str, monto, fuente: str, ref: str):
@@ -349,13 +316,8 @@ def enviar_email_admin(nombre: str, email: str, codigo: str, monto, fuente: str,
   </div>
 </body></html>
 """
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"💰 Nueva venta GuardianAV — {nombre}"
-    msg["From"]    = f"{EMAIL_NOMBRE} <{EMAIL_REMITENTE}>"
-    msg["To"]      = EMAIL_REMITENTE
-    msg.attach(MIMEText(html, "html"))
-    puerto = _smtp_send(EMAIL_REMITENTE, msg.as_string())
-    logging.info(f"Email admin enviado — venta de {nombre} via {puerto}")
+    _resend_send(EMAIL_REMITENTE, f"💰 Nueva venta GuardianAV — {nombre}", html)
+    logging.info(f"Email admin enviado — venta de {nombre}")
 
 
 def enviar_email_afiliado(ref: str, nombre_cliente: str, monto):
@@ -391,13 +353,8 @@ def enviar_email_afiliado(ref: str, nombre_cliente: str, monto):
   </div>
 </body></html>
 """
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "🔥 ¡Vendiste GuardianAV! — Tu comisión: $3.000 ARS"
-        msg["From"]    = f"{EMAIL_NOMBRE} <{EMAIL_REMITENTE}>"
-        msg["To"]      = email_afiliado
-        msg.attach(MIMEText(html, "html"))
-        puerto = _smtp_send(email_afiliado, msg.as_string())
-        logging.info(f"Email afiliado enviado a {email_afiliado} — ref={ref} via {puerto}")
+        _resend_send(email_afiliado, "🔥 ¡Vendiste GuardianAV! — Tu comisión: $3.000 ARS", html)
+        logging.info(f"Email afiliado enviado a {email_afiliado} — ref={ref}")
     except Exception as e:
         logging.error(f"Error email afiliado {ref}: {e}")
 
