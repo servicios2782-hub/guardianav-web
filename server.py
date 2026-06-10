@@ -29,11 +29,40 @@ BASE_URL         = "https://guardianav-web-production.up.railway.app"
 _SECRET          = b"GuardianAV-JorgeD-RioSegundo-2025"
 ML_ACCESS_TOKEN  = os.environ.get("ML_ACCESS_TOKEN", "")
 DATABASE_URL     = os.environ.get("DATABASE_URL", "")
+
+# Resend — API HTTP por puerto 443 (Railway bloquea SMTP saliente)
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+RESEND_FROM    = f"{EMAIL_NOMBRE} <onboarding@resend.dev>"
+RESEND_TIMEOUT = 15
 # ══════════════════════════════════════════════════════════
 
 app = Flask(__name__, static_folder=".", static_url_path="")
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s [%(levelname)s] %(message)s")
+
+
+def _resend_send(destinatario: str, asunto: str, html: str):
+    """Manda un email vía Resend API. Lanza excepción con el body si la API
+    devuelve != 2xx."""
+    if not RESEND_API_KEY:
+        raise RuntimeError("RESEND_API_KEY no configurada en el entorno")
+    r = requests.post(
+        "https://api.resend.com/emails",
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type": "application/json",
+        },
+        json={
+            "from": RESEND_FROM,
+            "to": [destinatario],
+            "subject": asunto,
+            "html": html,
+            "reply_to": EMAIL_REMITENTE,
+        },
+        timeout=RESEND_TIMEOUT,
+    )
+    if not r.ok:
+        raise RuntimeError(f"Resend {r.status_code}: {r.text}")
 
 
 # ── PostgreSQL ─────────────────────────────────────────────────────────────────
@@ -427,6 +456,19 @@ def webhook():
         logging.error(f"Error procesando webhook: {e}")
 
     return "", 200
+
+
+@app.route("/test-email")
+def test_email():
+    """Envia un email de prueba — sirve para confirmar que el fix de SMTP funciona.
+    Uso: /test-email?to=email@destino.com (si no se pasa to, va al admin)."""
+    destino = request.args.get("to", EMAIL_REMITENTE).strip()
+    try:
+        enviar_email("PRUEBA", destino, "TEST-CODIGO-1234")
+        return jsonify({"ok": True, "mensaje": f"Email enviado a {destino}. Revisá tu bandeja y spam."}), 200
+    except Exception as e:
+        logging.error(f"TEST-EMAIL falló para {destino}: {e}")
+        return jsonify({"ok": False, "error": str(e)}), 500
 
 
 @app.route("/pago-exitoso")
