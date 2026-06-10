@@ -1,15 +1,14 @@
 """
 GuardianAV — Servidor de ventas
 MercadoPago + envío automático de email con código de activación
-© 2025 Jorge D. — Río Segundo
+© 2026 GuardianAV
 """
 
-import os, json, hmac, hashlib, smtplib, logging
+import os, json, hmac, hashlib, logging
+import urllib.request
 from pathlib import Path
 from datetime import datetime
-from email.mime.multipart import MIMEMultipart
-from email.mime.text import MIMEText
-from flask import Flask, request, jsonify, send_from_directory, make_response
+from flask import Flask, request, jsonify, send_from_directory
 import mercadopago
 import psycopg2
 from psycopg2.extras import RealDictCursor
@@ -18,10 +17,14 @@ from psycopg2.extras import RealDictCursor
 # CONFIGURACIÓN
 # ══════════════════════════════════════════════════════════
 MP_ACCESS_TOKEN  = os.environ.get("MP_ACCESS_TOKEN", "")
-PRECIO_ARS       = 7999
+PRECIO_ARS       = 2190   # 1,5 USD al dólar de hoy (~$1.460). Ajustar a mano si el dólar se mueve.
+ACTIVADORES_POR_COMPRA = 5
 EMAIL_REMITENTE  = os.environ.get("EMAIL_REMITENTE", "dimeojorgeoscar@gmail.com")
-EMAIL_PASSWORD   = os.environ.get("EMAIL_PASSWORD", "")
 EMAIL_NOMBRE     = "GuardianAV"
+# ── Resend (envío de emails por HTTPS — Railway bloquea SMTP) ──
+RESEND_API_KEY   = os.environ.get("RESEND_API_KEY", "")
+EMAIL_FROM       = f"{EMAIL_NOMBRE} <onboarding@resend.dev>"  # dominio de prueba gratis de Resend
+EMAIL_REPLY_TO   = EMAIL_REMITENTE
 BASE_URL         = "https://guardianav-web-production.up.railway.app"
 _SECRET          = b"GuardianAV-JorgeD-RioSegundo-2025"
 ML_ACCESS_TOKEN  = os.environ.get("ML_ACCESS_TOKEN", "")
@@ -63,15 +66,6 @@ def init_db():
                     activado BOOLEAN DEFAULT FALSE,
                     dispositivo TEXT DEFAULT '',
                     fecha_activacion TEXT DEFAULT ''
-                );
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS afiliados (
-                    id SERIAL PRIMARY KEY,
-                    ref TEXT UNIQUE,
-                    nombre TEXT,
-                    email TEXT,
-                    fecha TEXT
                 );
             """)
         conn.commit()
@@ -162,28 +156,6 @@ def activar_codigo(codigo: str, dispositivo: str) -> dict:
         logging.error(f"activar_codigo error: {e}")
         return {"ok": False, "msg": "Error interno"}
 
-def load_afiliados() -> list:
-    try:
-        with get_conn() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                cur.execute("SELECT * FROM afiliados ORDER BY id")
-                return [dict(r) for r in cur.fetchall()]
-    except Exception as e:
-        logging.error(f"load_afiliados error: {e}")
-        return []
-
-def save_afiliado(entry: dict):
-    try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute("""
-                    INSERT INTO afiliados (ref, nombre, email, fecha)
-                    VALUES (%s,%s,%s,%s) ON CONFLICT (ref) DO NOTHING
-                """, (entry["ref"], entry["nombre"], entry["email"], entry["fecha"]))
-            conn.commit()
-    except Exception as e:
-        logging.error(f"save_afiliado error: {e}")
-
 
 def generar_codigo(serial: str) -> str:
     mac = hmac.new(_SECRET, serial.upper().encode(), hashlib.sha256).hexdigest()
@@ -192,17 +164,66 @@ def generar_codigo(serial: str) -> str:
 
 
 def asignar_codigo() -> str:
-    """Asigna el próximo código disponible en orden."""
-    used = load_used()
-    i    = len(used) + 1
-    serial = f"CLIENTE{i:03d}"
-    code   = generar_codigo(serial)
-    save_codigo({"serial": serial, "code": code, "asignado": datetime.now().isoformat()})
-    return code
+    """Asigna el próximo código disponible en orden (1 solo)."""
+    return asignar_codigos(1)[0]
 
 
-def enviar_email(nombre: str, email: str, codigo: str):
-    """Envía el email con el código de activación y el link de descarga."""
+def asignar_codigos(n: int = 1) -> list:
+    """Asigna los próximos n códigos disponibles en orden y devuelve la lista."""
+    codes = []
+    for _ in range(n):
+        used   = load_used()
+        i      = len(used) + 1
+        serial = f"CLIENTE{i:03d}"
+        code   = generar_codigo(serial)
+        save_codigo({"serial": serial, "code": code, "asignado": datetime.now().isoformat()})
+        codes.append(code)
+    return codes
+
+
+def _enviar_html(destinatario: str, asunto: str, html: str):
+    """Envía un email por la API de Resend (HTTPS).
+    Railway bloquea SMTP, por eso NO mandamos por Gmail directo sino por Resend.
+    Necesita la variable de entorno RESEND_API_KEY configurada en Railway."""
+    if not RESEND_API_KEY:
+        logging.error("RESEND_API_KEY no configurada — el email NO se envió")
+        raise RuntimeError("RESEND_API_KEY no configurada")
+    payload = json.dumps({
+        "from":     EMAIL_FROM,
+        "to":       [destinatario],
+        "reply_to": EMAIL_REPLY_TO,
+        "subject":  asunto,
+        "html":     html,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        "https://api.resend.com/emails",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {RESEND_API_KEY}",
+            "Content-Type":  "application/json",
+        },
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=15) as resp:
+        resp.read()
+    logging.info(f"Email enviado vía Resend a {destinatario}")
+
+
+def enviar_email(nombre: str, email: str, codigos):
+    """Envía el email con el/los código(s) de activación y el link de descarga.
+    `codigos` puede ser un string (1 código) o una lista de códigos."""
+    if isinstance(codigos, str):
+        codigos = [codigos]
+
+    # Cajas de código (una por activador)
+    cajas_codigos = "".join(
+        f'''<div style="background:#060d14; border-radius:8px; padding:14px; font-family:Courier New,monospace; font-size:20px; font-weight:bold; color:#ffcc00; letter-spacing:2px; margin-bottom:8px;">
+        <span style="color:#3a6080; font-size:12px; display:block; letter-spacing:1px;">Activador {idx}</span>{cod}
+      </div>'''
+        for idx, cod in enumerate(codigos, start=1)
+    )
+    plural = "tus códigos" if len(codigos) > 1 else "tu código"
+    titulo_codigos = f"TUS {len(codigos)} CÓDIGOS DE ACTIVACIÓN" if len(codigos) > 1 else "TU CÓDIGO DE ACTIVACIÓN"
     html = f"""
 <!DOCTYPE html>
 <html>
@@ -222,11 +243,9 @@ def enviar_email(nombre: str, email: str, codigo: str):
     </div>
 
     <div style="background:#0b1929; border:2px solid #00d4ff; border-radius:12px; padding:28px; margin-bottom:24px; text-align:center;">
-      <p style="color:#3a6080; font-size:13px; margin-bottom:8px;">TU CÓDIGO DE ACTIVACIÓN</p>
-      <div style="background:#060d14; border-radius:8px; padding:16px; font-family:Courier New,monospace; font-size:22px; font-weight:bold; color:#ffcc00; letter-spacing:2px;">
-        {codigo}
-      </div>
-      <p style="color:#3a6080; font-size:12px; margin-top:8px;">Guardá este código — lo vas a necesitar para activar el programa</p>
+      <p style="color:#3a6080; font-size:13px; margin-bottom:8px;">{titulo_codigos}</p>
+      {cajas_codigos}
+      <p style="color:#3a6080; font-size:12px; margin-top:8px;">Cada código activa 1 PC. Guardá {plural} — los vas a necesitar para activar el programa.</p>
       <p style="color:#ffcc00; font-size:12px; margin-top:4px;">⚠️ Si no encontrabas este mail, revisá la carpeta de <strong>SPAM</strong> o <strong>No deseado</strong>.</p>
     </div>
 
@@ -258,28 +277,18 @@ def enviar_email(nombre: str, email: str, codigo: str):
     </div>
 
     <div style="text-align:center; border-top:1px solid #0a2d4a; padding-top:20px;">
-      <p style="color:#3a6080; font-size:11px;">© 2025 Todos los derechos reservados</p>
+      <p style="color:#3a6080; font-size:11px;">© 2026 GuardianAV — Todos los derechos reservados</p>
     </div>
   </div>
 </body>
 </html>
 """
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = "GuardianAV — Tu código de activación"
-    msg["From"]    = f"{EMAIL_NOMBRE} <{EMAIL_REMITENTE}>"
-    msg["To"]      = email
-    msg.attach(MIMEText(html, "html"))
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-        s.login(EMAIL_REMITENTE, EMAIL_PASSWORD)
-        s.sendmail(EMAIL_REMITENTE, email, msg.as_string())
-
+    _enviar_html(email, "GuardianAV — Tu código de activación", html)
     logging.info(f"Email enviado a {email}")
 
 
-def enviar_email_admin(nombre: str, email: str, codigo: str, monto, fuente: str, ref: str):
+def enviar_email_admin(nombre: str, email: str, codigo: str, monto, fuente: str):
     """Notifica al admin (Jorge) de cada venta."""
-    ref_txt = f"Referido por: <strong style='color:#00ff88'>{ref}</strong> (+$3.000 ARS comisión)" if ref else "Venta directa (sin afiliado)"
     html = f"""
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"></head>
@@ -292,67 +301,13 @@ def enviar_email_admin(nombre: str, email: str, codigo: str, monto, fuente: str,
       <p><strong style="color:#00d4ff">Código asignado:</strong> <span style="color:#ffcc00;font-family:monospace">{codigo}</span></p>
       <p><strong style="color:#00d4ff">Monto:</strong> <span style="color:#00ff88">${monto}</span></p>
       <p><strong style="color:#00d4ff">Plataforma:</strong> {fuente}</p>
-      <p><strong style="color:#00d4ff">Afiliado:</strong> {ref_txt}</p>
     </div>
     <p style="color:#3a6080;font-size:12px;text-align:center;">Panel de ventas: {BASE_URL}/ventas</p>
   </div>
 </body></html>
 """
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"💰 Nueva venta GuardianAV — {nombre}"
-    msg["From"]    = f"{EMAIL_NOMBRE} <{EMAIL_REMITENTE}>"
-    msg["To"]      = EMAIL_REMITENTE
-    msg.attach(MIMEText(html, "html"))
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-        s.login(EMAIL_REMITENTE, EMAIL_PASSWORD)
-        s.sendmail(EMAIL_REMITENTE, EMAIL_REMITENTE, msg.as_string())
+    _enviar_html(EMAIL_REMITENTE, f"💰 Nueva venta GuardianAV — {nombre}", html)
     logging.info(f"Email admin enviado — venta de {nombre}")
-
-
-def enviar_email_afiliado(ref: str, nombre_cliente: str, monto):
-    """Notifica al afiliado que realizó una venta."""
-    try:
-        afiliados = load_afiliados()
-        afiliado = next((a for a in afiliados if a["ref"] == ref), None)
-        if not afiliado or not afiliado.get("email"):
-            logging.warning(f"Afiliado {ref} no encontrado o sin email")
-            return
-        email_afiliado = afiliado["email"]
-        nombre_afiliado = afiliado["nombre"]
-        html = f"""
-<!DOCTYPE html>
-<html><head><meta charset="utf-8"></head>
-<body style="background:#060d14;color:#e0f0ff;font-family:Arial,sans-serif;padding:30px;">
-  <div style="max-width:500px;margin:0 auto;">
-    <h2 style="color:#ffcc00;text-align:center;">🔥 ¡VENDISTE — GuardianAV!</h2>
-    <div style="background:#0b1929;border:2px solid #ffcc00;border-radius:12px;padding:24px;margin:20px 0;">
-      <p style="font-size:16px;">Hola <strong style="color:#00d4ff">{nombre_afiliado}</strong>,</p>
-      <p style="color:#a0c0d8;">¡Realizaste una venta a través de tu link de afiliado!</p>
-      <div style="text-align:center;margin:20px 0;padding:16px;background:#060d14;border-radius:8px;">
-        <p style="color:#3a6080;font-size:13px;margin-bottom:4px;">TU COMISIÓN</p>
-        <p style="color:#00ff88;font-size:32px;font-weight:bold;margin:0;">$3.000 ARS</p>
-      </div>
-      <p><strong style="color:#00d4ff">Cliente:</strong> {nombre_cliente}</p>
-      <p><strong style="color:#00d4ff">Tu link:</strong> {BASE_URL}/?ref={ref}</p>
-    </div>
-    <p style="color:#3a6080;font-size:12px;text-align:center;">
-      El pago de tu comisión se coordina con el vendedor.<br>
-      Contacto: {EMAIL_REMITENTE}
-    </p>
-  </div>
-</body></html>
-"""
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = "🔥 ¡Vendiste GuardianAV! — Tu comisión: $3.000 ARS"
-        msg["From"]    = f"{EMAIL_NOMBRE} <{EMAIL_REMITENTE}>"
-        msg["To"]      = email_afiliado
-        msg.attach(MIMEText(html, "html"))
-        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as s:
-            s.login(EMAIL_REMITENTE, EMAIL_PASSWORD)
-            s.sendmail(EMAIL_REMITENTE, email_afiliado, msg.as_string())
-        logging.info(f"Email afiliado enviado a {email_afiliado} — ref={ref}")
-    except Exception as e:
-        logging.error(f"Error email afiliado {ref}: {e}")
 
 
 
@@ -360,12 +315,7 @@ def enviar_email_afiliado(ref: str, nombre_cliente: str, monto):
 
 @app.route("/")
 def index():
-    ref = request.args.get("ref", "").strip().upper()
-    resp = make_response(send_from_directory(".", "index.html"))
-    if ref:
-        resp.set_cookie("ref_afiliado", ref, max_age=7*24*3600)  # 7 días
-        logging.info(f"Visita con referido: {ref}")
-    return resp
+    return send_from_directory(".", "index.html")
 
 
 @app.route("/crear-pago", methods=["POST"])
@@ -378,13 +328,10 @@ def crear_pago():
     if not nombre or not email:
         return jsonify({"error": "Datos incompletos"}), 400
 
-    # Leer referido desde cookie
-    ref_afiliado = request.cookies.get("ref_afiliado", "")
-
     sdk  = mercadopago.SDK(MP_ACCESS_TOKEN)
     pref = {
         "items": [{
-            "title":      "GuardianAV — Licencia completa",
+            "title":      "GuardianAV — Pack 5 activadores (licencia 1 año)",
             "quantity":   1,
             "unit_price": PRECIO_ARS,
             "currency_id": "ARS",
@@ -400,7 +347,7 @@ def crear_pago():
         },
         "auto_return":    "approved",
         "notification_url": f"{BASE_URL}/webhook",
-        "external_reference": json.dumps({"nombre": nombre, "email": email, "ref": ref_afiliado}),
+        "external_reference": json.dumps({"nombre": nombre, "email": email}),
         "statement_descriptor": "GUARDIANAV",
     }
 
@@ -442,45 +389,39 @@ def webhook():
         ref    = json.loads(pago.get("external_reference", "{}"))
         nombre = ref.get("nombre", pago.get("payer", {}).get("first_name", "Cliente"))
         email  = ref.get("email",  pago.get("payer", {}).get("email", ""))
-        ref_afiliado = ref.get("ref", "")
 
         # Verificar que no se procese dos veces
         if venta_existe(str(pago_id)):
             logging.info(f"Pago {pago_id} ya procesado")
             return "", 200
 
-        # Asignar código
-        codigo = asignar_codigo()
+        # Asignar los 5 códigos del pack
+        codigos = asignar_codigos(ACTIVADORES_POR_COMPRA)
+        codigo_str = ", ".join(codigos)
 
         # Guardar venta
         entrada = {
             "pago_id":  str(pago_id),
             "nombre":   nombre,
             "email":    email,
-            "codigo":   codigo,
+            "codigo":   codigo_str,
             "fecha":    datetime.now().isoformat(),
             "monto":    pago.get("transaction_amount"),
             "fuente":   "web",
-            "ref":      ref_afiliado,
         }
-        if ref_afiliado:
-            logging.info(f"Venta referida por: {ref_afiliado}")
         save_venta(entrada)
 
-        # Enviar email
+        # Enviar email con los 5 códigos
         try:
-            enviar_email(nombre, email, codigo)
-            logging.info(f"VENTA PROCESADA — {nombre} ({email}) — Código: {codigo}")
+            enviar_email(nombre, email, codigos)
+            logging.info(f"VENTA PROCESADA — {nombre} ({email}) — Códigos: {codigo_str}")
         except Exception as email_err:
             logging.error(f"ERROR ENVIANDO EMAIL a {email}: {email_err}")
 
         try:
-            enviar_email_admin(nombre, email, codigo, pago.get("transaction_amount"), "web", ref_afiliado)
+            enviar_email_admin(nombre, email, codigo_str, pago.get("transaction_amount"), "web")
         except Exception as e:
             logging.error(f"Error email admin: {e}")
-
-        if ref_afiliado:
-            enviar_email_afiliado(ref_afiliado, nombre, pago.get("transaction_amount"))
 
     except Exception as e:
         logging.error(f"Error procesando webhook: {e}")
@@ -587,7 +528,7 @@ def webhook_hotmart():
 
         try:
             monto_hotmart = purchase.get("price", {}).get("value", 0)
-            enviar_email_admin(nombre, email, codigo, monto_hotmart, "hotmart", "")
+            enviar_email_admin(nombre, email, codigo, monto_hotmart, "hotmart")
         except Exception as e:
             logging.error(f"Error email admin hotmart: {e}")
 
@@ -654,7 +595,7 @@ def webhook_ml():
             logging.error(f"ERROR EMAIL ML a {email}: {email_err}")
 
         try:
-            enviar_email_admin(nombre, email, codigo, monto, "mercadolibre", "")
+            enviar_email_admin(nombre, email, codigo, monto, "mercadolibre")
         except Exception as e:
             logging.error(f"Error email admin ML: {e}")
 
@@ -695,7 +636,7 @@ def ver_ventas():
     rows  = "".join(
         f"<tr><td>{v['fecha'][:16]}</td><td>{v['nombre']}</td><td>{v['email']}</td>"
         f"<td style='color:#ffcc00'>{v['codigo']}</td><td style='color:#00ff88'>${v.get('monto',0)}</td>"
-        f"<td style='color:#00d4ff'>{v.get('ref','—')}</td><td style='color:#3a6080'>{v.get('fuente','web')}</td></tr>"
+        f"<td style='color:#3a6080'>{v.get('fuente','web')}</td></tr>"
         for v in reversed(db)
     )
     return f"""
@@ -705,7 +646,6 @@ def ver_ventas():
     <body style="background:#060d14;color:#e0f0ff;font-family:monospace;padding:32px;">
       <h1 style="color:#00d4ff">GuardianAV — Panel de Ventas</h1>
       <p style="color:#3a6080">Ventas: {len(db)} | Recaudado: ${total:,.0f} | Activaciones: {activados}</p>
-      <p><a href="/afiliados" style="color:#00ff88">Ver panel de afiliados →</a></p>
       <table style="width:100%;border-collapse:collapse;margin-top:20px;">
         <tr style="color:#3a6080;border-bottom:1px solid #0a2d4a;">
           <th style="text-align:left;padding:8px">Fecha</th>
@@ -713,89 +653,9 @@ def ver_ventas():
           <th style="text-align:left;padding:8px">Email</th>
           <th style="text-align:left;padding:8px">Código</th>
           <th style="text-align:left;padding:8px">Monto</th>
-          <th style="text-align:left;padding:8px">Referido por</th>
           <th style="text-align:left;padding:8px">Fuente</th>
         </tr>
-        {rows if rows else '<tr><td colspan="7" style="padding:20px;color:#3a6080">Sin ventas aún</td></tr>'}
-      </table>
-    </body>
-    </html>"""
-
-
-@app.route("/registro-afiliado", methods=["POST"])
-def registro_afiliado():
-    """Un influencer se registra y recibe su link único."""
-    data   = request.json or {}
-    nombre = data.get("nombre", "").strip().upper()
-    email  = data.get("email", "").strip()
-    if not nombre or not email:
-        return jsonify({"ok": False, "msg": "Completá todos los campos"}), 400
-
-    # Solo letras y números en el código
-    codigo_ref = "".join(c for c in nombre if c.isalnum())[:15]
-    if not codigo_ref:
-        return jsonify({"ok": False, "msg": "Nombre inválido"}), 400
-
-    afiliados = load_afiliados()
-    existente = next((a for a in afiliados if a["ref"] == codigo_ref), None)
-    if existente:
-        link = f"{BASE_URL}/?ref={codigo_ref}"
-        return jsonify({"ok": True, "link": link, "ref": codigo_ref, "nuevo": False})
-
-    save_afiliado({
-        "ref":    codigo_ref,
-        "nombre": nombre,
-        "email":  email,
-        "fecha":  datetime.now().isoformat(),
-    })
-    logging.info(f"Nuevo afiliado: {nombre} ({email}) — ref={codigo_ref}")
-
-    link = f"{BASE_URL}/?ref={codigo_ref}"
-    return jsonify({"ok": True, "link": link, "ref": codigo_ref, "nuevo": True})
-
-
-@app.route("/afiliados", methods=["GET"])
-def ver_afiliados():
-    """Panel de afiliados — cuántas ventas trajo cada influencer."""
-    db = load_db()
-    # Agrupar ventas por referido
-    stats = {}
-    for v in db:
-        ref = v.get("ref", "")
-        if not ref:
-            continue
-        if ref not in stats:
-            stats[ref] = {"ventas": 0, "monto": 0}
-        stats[ref]["ventas"] += 1
-        stats[ref]["monto"]  += v.get("monto", 0)
-
-    rows = "".join(
-        f"<tr>"
-        f"<td style='color:#00d4ff;padding:10px'>{ref}</td>"
-        f"<td style='padding:10px'>{d['ventas']}</td>"
-        f"<td style='color:#00ff88;padding:10px'>${d['monto']:,.0f}</td>"
-        f"<td style='color:#ffcc00;padding:10px'>${d['ventas'] * 3000:,.0f} ($3.000/venta)</td>"
-        f"<td style='padding:10px;font-size:12px'>{BASE_URL}/?ref={ref}</td>"
-        f"</tr>"
-        for ref, d in sorted(stats.items(), key=lambda x: x[1]["ventas"], reverse=True)
-    )
-
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head><meta charset="utf-8"><title>Afiliados GuardianAV</title></head>
-    <body style="background:#060d14;color:#e0f0ff;font-family:monospace;padding:32px;">
-      <h1 style="color:#00d4ff">GuardianAV — Panel de Afiliados</h1>
-      <p style="color:#3a6080">Influencers activos: {len(stats)} | <a href="/ventas" style="color:#00d4ff">← Volver a ventas</a></p>
-      <table style="width:100%;border-collapse:collapse;margin-top:20px;">
-        <tr style="color:#3a6080;border-bottom:1px solid #0a2d4a;">
-          <th style="text-align:left;padding:8px">Influencer</th>
-          <th style="text-align:left;padding:8px">Ventas</th>
-          <th style="text-align:left;padding:8px">Recaudado</th>
-          <th style="text-align:left;padding:8px">Comisión estimada</th>
-          <th style="text-align:left;padding:8px">Su link</th>
-        </tr>
-        {rows if rows else '<tr><td colspan="5" style="padding:20px;color:#3a6080">Aún no hay ventas referidas</td></tr>'}
+        {rows if rows else '<tr><td colspan="6" style="padding:20px;color:#3a6080">Sin ventas aún</td></tr>'}
       </table>
     </body>
     </html>"""
