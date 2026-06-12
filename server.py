@@ -23,7 +23,7 @@ EMAIL_REMITENTE  = os.environ.get("EMAIL_REMITENTE", "dimeojorgeoscar@gmail.com"
 EMAIL_NOMBRE     = "GuardianAV"
 # ── Resend (envío de emails por HTTPS — Railway bloquea SMTP) ──
 RESEND_API_KEY   = os.environ.get("RESEND_API_KEY", "")
-EMAIL_FROM       = f"{EMAIL_NOMBRE} <onboarding@resend.dev>"  # dominio de prueba gratis de Resend
+EMAIL_FROM       = f"{EMAIL_NOMBRE} <noreply@guardian-av.com>"  # dominio de prueba gratis de Resend
 EMAIL_REPLY_TO   = EMAIL_REMITENTE
 BASE_URL         = "https://guardianav-web-production.up.railway.app"
 _SECRET          = b"GuardianAV-JorgeD-RioSegundo-2025"
@@ -32,7 +32,7 @@ DATABASE_URL     = os.environ.get("DATABASE_URL", "")
 
 # Resend — API HTTP por puerto 443 (Railway bloquea SMTP saliente)
 RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
-RESEND_FROM    = f"{EMAIL_NOMBRE} <onboarding@resend.dev>"
+RESEND_FROM    = f"{EMAIL_NOMBRE} <noreply@guardian-av.com>"
 RESEND_TIMEOUT = 15
 # ══════════════════════════════════════════════════════════
 
