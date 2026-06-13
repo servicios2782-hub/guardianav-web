@@ -5,7 +5,7 @@ MercadoPago + envío automático de email con código de activación
 """
 
 import os, json, hmac, hashlib, logging
-import urllib.request
+import urllib.request, urllib.error
 from pathlib import Path
 from datetime import datetime
 from flask import Flask, request, jsonify, send_from_directory
@@ -233,8 +233,13 @@ def _enviar_html(destinatario: str, asunto: str, html: str):
         },
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=15) as resp:
-        resp.read()
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            resp.read()
+    except urllib.error.HTTPError as e:
+        cuerpo = e.read().decode("utf-8", "ignore")
+        logging.error(f"Resend rechazó ({e.code}): {cuerpo}")
+        raise RuntimeError(f"Resend {e.code}: {cuerpo}")
     logging.info(f"Email enviado vía Resend a {destinatario}")
 
 
