@@ -230,6 +230,7 @@ def _enviar_html(destinatario: str, asunto: str, html: str):
         headers={
             "Authorization": f"Bearer {RESEND_API_KEY}",
             "Content-Type":  "application/json",
+            "User-Agent":    "GuardianAV/1.0",
         },
         method="POST",
     )
