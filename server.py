@@ -625,12 +625,12 @@ def webhook_ml():
             logging.info(f"Orden ML {order_id} ya procesada")
             return "", 200
 
-        codigo = asignar_codigo()
+        codigos = asignar_codigos(ACTIVADORES_POR_COMPRA)
         save_venta({
             "pago_id": str(order_id),
             "nombre":  nombre,
             "email":   email,
-            "codigo":  codigo,
+            "codigo":  ", ".join(codigos),
             "fecha":   datetime.now().isoformat(),
             "monto":   monto,
             "fuente":  "mercadolibre",
@@ -638,13 +638,13 @@ def webhook_ml():
         })
 
         try:
-            enviar_email(nombre, email, codigo)
-            logging.info(f"VENTA ML PROCESADA — {nombre} ({email}) — Codigo: {codigo}")
+            enviar_email(nombre, email, codigos)
+            logging.info(f"VENTA ML PROCESADA — {nombre} ({email}) — Codigos: {', '.join(codigos)}")
         except Exception as email_err:
             logging.error(f"ERROR EMAIL ML a {email}: {email_err}")
 
         try:
-            enviar_email_admin(nombre, email, codigo, monto, "mercadolibre")
+            enviar_email_admin(nombre, email, ", ".join(codigos), monto, "mercadolibre")
         except Exception as e:
             logging.error(f"Error email admin ML: {e}")
 
