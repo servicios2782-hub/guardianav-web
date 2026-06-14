@@ -25,7 +25,8 @@ EMAIL_NOMBRE     = "GuardianAV"
 RESEND_API_KEY   = os.environ.get("RESEND_API_KEY", "")
 EMAIL_FROM       = f"{EMAIL_NOMBRE} <noreply@guardian-av.com>"  # dominio de prueba gratis de Resend
 EMAIL_REPLY_TO   = EMAIL_REMITENTE
-BASE_URL         = "https://guardianav-web-production.up.railway.app"
+DOMINIO_PUBLICO  = "https://guardian-av.com"                          # lo que ve el cliente
+BASE_URL         = "https://guardianav-web-production.up.railway.app"  # solo webhook (directo, sin Cloudflare)
 _SECRET          = b"GuardianAV-JorgeD-RioSegundo-2025"
 ML_ACCESS_TOKEN  = os.environ.get("ML_ACCESS_TOKEN", "")
 DATABASE_URL     = os.environ.get("DATABASE_URL", "")
@@ -337,7 +338,7 @@ def enviar_email_admin(nombre: str, email: str, codigo: str, monto, fuente: str)
       <p><strong style="color:#00d4ff">Monto:</strong> <span style="color:#00ff88">${monto}</span></p>
       <p><strong style="color:#00d4ff">Plataforma:</strong> {fuente}</p>
     </div>
-    <p style="color:#3a6080;font-size:12px;text-align:center;">Panel de ventas: {BASE_URL}/ventas</p>
+    <p style="color:#3a6080;font-size:12px;text-align:center;">Panel de ventas: {DOMINIO_PUBLICO}/ventas</p>
   </div>
 </body></html>
 """
@@ -376,9 +377,9 @@ def crear_pago():
             "email": email,
         },
         "back_urls": {
-            "success": f"{BASE_URL}/pago-exitoso",
-            "failure": f"{BASE_URL}/pago-fallido",
-            "pending": f"{BASE_URL}/pago-pendiente",
+            "success": f"{DOMINIO_PUBLICO}/pago-exitoso",
+            "failure": f"{DOMINIO_PUBLICO}/pago-fallido",
+            "pending": f"{DOMINIO_PUBLICO}/pago-pendiente",
         },
         "auto_return":    "approved",
         "notification_url": f"{BASE_URL}/webhook",
