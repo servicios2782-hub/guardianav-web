@@ -17,7 +17,7 @@ from psycopg2.extras import RealDictCursor
 # CONFIGURACIÓN
 # ══════════════════════════════════════════════════════════
 MP_ACCESS_TOKEN  = os.environ.get("MP_ACCESS_TOKEN", "")
-PRECIO_ARS       = 2190   # 1,5 USD al dólar de hoy (~$1.460). Ajustar a mano si el dólar se mueve.
+PRECIO_ARS       = 4999   # Precio web. ML va aparte a $5.500. Ajustar a mano si cambia.
 ACTIVADORES_POR_COMPRA = 5
 EMAIL_REMITENTE  = os.environ.get("EMAIL_REMITENTE", "dimeojorgeoscar@gmail.com")
 EMAIL_NOMBRE     = "GuardianAV"
