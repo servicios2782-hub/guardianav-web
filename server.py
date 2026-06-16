@@ -289,9 +289,11 @@ def enviar_email(nombre: str, email: str, codigos):
       <p style="font-size:15px; font-weight:bold; margin-bottom:16px; color:#00ff88;">Pasos para instalar:</p>
       <ol style="color:#3a6080; line-height:2; padding-left:20px;">
         <li>Descargá GuardianAV desde este link: <a href="https://drive.google.com/file/d/1uyrxHWQO9LJHqHDfLX6MgP_H-K0tM4JY/view?usp=sharing" style="color:#00d4ff;">DESCARGAR GUARDIANAV</a></li>
-        <li>Ejecutá el archivo como <strong style="color:#e0f0ff">Administrador</strong> (clic derecho → Ejecutar como administrador)</li>
-        <li>Ingresá el código de activación cuando lo pida</li>
-        <li>¡Listo! Tu PC ya está protegida</li>
+        <li>Hacé <strong style="color:#e0f0ff">clic derecho</strong> sobre el archivo descargado y elegí <strong style="color:#e0f0ff">"Ejecutar como administrador"</strong>.</li>
+        <li>Puede aparecer una pantalla azul que dice <strong style="color:#ffbb44">"Windows protegió su PC"</strong>. Es normal en programas nuevos: hacé clic en <strong style="color:#ffbb44">"Más información"</strong> y después en <strong style="color:#ffbb44">"Ejecutar de todas formas"</strong>.</li>
+        <li>Si Windows pregunta si permitís que la app haga cambios en el equipo, hacé clic en <strong style="color:#e0f0ff">"Sí"</strong>.</li>
+        <li>Ingresá el código de activación cuando lo pida.</li>
+        <li>¡Listo! Tu PC ya está protegida.</li>
       </ol>
     </div>
 
@@ -301,7 +303,7 @@ def enviar_email(nombre: str, email: str, codigos):
         Es posible que Windows muestre una pantalla azul diciendo <strong style="color:#ffbb44">"Windows protegió su PC"</strong>.
         Esto es normal para programas nuevos y <strong style="color:#ffbb44">NO significa que sea un virus</strong>.<br><br>
         Para continuar: hacé clic en <strong style="color:#ffbb44">"Más información"</strong> y después en <strong style="color:#ffbb44">"Ejecutar de todas formas"</strong>.
-        El programa fue verificado y es 100% seguro. Ante cualquier duda, contactanos por WhatsApp.
+        El aviso aparece porque es un desarrollo nuevo que todavía no está firmado digitalmente, no porque sea peligroso. Ante cualquier duda, escribinos por WhatsApp.
       </p>
     </div>
 
